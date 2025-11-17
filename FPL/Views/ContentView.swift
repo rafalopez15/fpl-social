@@ -32,7 +32,11 @@ struct ContentView: View {
                     }
                 }
                 .navigationTitle("Forwards")
+<<<<<<< HEAD
                 //.searchable(text: $viewModel.searchQuery, prompt: "Search forwards")
+=======
+                .searchable(text: $viewModel.searchQuery, prompt: "Search forwards")
+>>>>>>> 0cb8590 (xcode files)
             }
         }
         .onAppear {
