@@ -1,26 +1,54 @@
-# This workflow will build a Swift project
-# For more information see: https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-swift
+# Builds the FPL iOS app and runs its unit tests on an iOS simulator.
 
-name: Swift
+name: iOS
 
 on:
   push:
     branches: [ "main" ]
-    paths: [ "ios/**" ]
+    paths:
+      - "FPL/**"
+      - "FPLTests/**"
+      - "FPL.xcodeproj/**"
+      - ".github/workflows/swift.yml"
   pull_request:
     branches: [ "main" ]
-    paths: [ "ios/**" ]
+    paths:
+      - "FPL/**"
+      - "FPLTests/**"
+      - "FPL.xcodeproj/**"
+      - ".github/workflows/swift.yml"
 
 jobs:
-  build:
-    runs-on: macos-latest
-    defaults:
-      run:
-        working-directory: ios
+  test:
+    # The app uses iOS 26 SDK APIs, so it needs Xcode 26 or later.
+    runs-on: macos-26
 
     steps:
     - uses: actions/checkout@v4
-    - name: Build
-      run: swift build -v
-    - name: Run tests
-      run: swift test -v
+
+    - name: Select Xcode
+      uses: maxim-lobanov/setup-xcode@v1
+      with:
+        xcode-version: latest-stable
+
+    - name: Pick an iPhone simulator
+      run: |
+        UDID=$(xcrun simctl list devices available --json \
+          | jq -r '[.devices | to_entries[] | select(.key | test("iOS")) | .value[]
+                    | select(.name | startswith("iPhone"))] | last | .udid')
+        if [ -z "$UDID" ] || [ "$UDID" = "null" ]; then
+          echo "No iPhone simulator available" >&2
+          xcrun simctl list devices available
+          exit 1
+        fi
+        echo "Using simulator $UDID"
+        echo "SIMULATOR_UDID=$UDID" >> "$GITHUB_ENV"
+
+    - name: Build and run unit tests
+      run: |
+        xcodebuild test \
+          -project FPL.xcodeproj \
+          -scheme FPL \
+          -destination "id=$SIMULATOR_UDID" \
+          -only-testing:FPLTests \
+          CODE_SIGNING_ALLOWED=NO
