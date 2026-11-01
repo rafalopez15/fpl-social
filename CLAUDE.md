@@ -6,7 +6,7 @@ Guidance for Claude Code when working in this repo.
 
 FPL is a SwiftUI iOS app for browsing Fantasy Premier League players. It doesn't call FPL directly. It talks to **fplAPI**, a separate FastAPI backend (its own repo) that wraps the FPL API and serves cleaned-up JSON under `/api`. FPL calls players "elements", and the code keeps that name.
 
-Current features: a player list per position, sorting, a max price filter, search, a stats popover per player, and team short names.
+Current features: a tab bar (Feed, Players, Notes, Profile), and on the Players tab a player list per position, sorting, search, a stats popover per player, and team short names. Feed, Notes and Profile are placeholders; the backlog for them lives in Linear (team FPL Social, projects Transfer Notes and FPL Social).
 
 ## Build and test
 
@@ -48,27 +48,31 @@ The backend returns `503 {"detail": "FPL data is currently unavailable"}` before
 
 ## Architecture
 
-MVVM with one screen. The Xcode project uses file-system synchronized groups, so new files under `FPL/` or `FPLTests/` are picked up without editing `project.pbxproj`.
+MVVM. Four tabs, each owning its own `NavigationStack`, switched by a custom tab bar (see Design). The Xcode project uses file-system synchronized groups, so new files under `FPL/` or `FPLTests/` are picked up without editing `project.pbxproj`.
 
 ```
 FPL/
   FPLApp.swift                  App entry, shows ContentView
   Model/
     Element.swift               Player model, Status and Position enums, display helpers, JSONDecoder.fplAPI
-    ElementFilter.swift         ElementFilter (max price) and ElementSort (points, price, goals, assists, selected by)
+    ElementSort.swift           ElementSort (points, price, goals, assists, selected by)
     Team.swift                  Team id, name, short name
   Networking/
     FPLAPIClient.swift          async/await client, maps HTTP errors to APIError
   ViewModel/
-    ElementViewModel.swift      @MainActor ObservableObject: loading, search, sort, filter, teams
+    ElementViewModel.swift      @MainActor ObservableObject: loading, search, sort, teams
   Views/
-    ContentView.swift           List screen, title menu, toolbar, ElementRow
-    FilterView.swift            Sort and price filter sheet
+    ContentView.swift           Root: AppTab enum, the four tabs in a ZStack, FloodlightsTabBar (opens on Feed)
+    Theme.swift                 Floodlights colors, Color(hex:), themedScreen() and themedRow() modifiers
+    PlayersView.swift           Players tab: list, title menu, toolbar, ElementRow
+    FeedView.swift              Feed tab (placeholder, FPL-15)
+    NotesView.swift             Notes tab (placeholder, FPL-14)
+    ProfileView.swift           Profile tab (placeholder, FPL-9 / FPL-11)
     ElementStatsView.swift      Stats popover content
-FPLTests/FPLTests.swift         Swift Testing: decoding and filter tests
+FPLTests/FPLTests.swift         Swift Testing: decoding and sort tests
 ```
 
-Data flow: `ContentView` owns an `ElementViewModel` (`@StateObject`). `.task(id: viewModel.position)` calls `fetchElements()` on appear and on every position change. The view model fetches players and, on the first load, teams in parallel. `filteredElements` applies search, the filter and the sort on every read; lists are small (under 300 players per position), so nothing is cached.
+Data flow: `PlayersView` owns an `ElementViewModel` (`@StateObject`). `.task(id: viewModel.position)` calls `fetchElements()` on appear and on every position change. The view model fetches players and, on the first load, teams in parallel. `filteredElements` applies search and the sort on every read; lists are small (under 300 players per position), so nothing is cached.
 
 ## Model rules
 
@@ -90,17 +94,23 @@ The full-screen spinner shows only when `isLoading && elements.isEmpty`. Refresh
 
 ## Design
 
-The UI uses standard iOS components and system styling: no custom colors, fonts or assets.
+The app uses the **Floodlights** theme (picked from three directions suggested by the ui-ux-pro-max skill): midnight navy surfaces, one green accent, SF Pro type. It is dark mode only: `UIUserInterfaceStyle` is `Dark` in `Info.plist`, so don't add light-mode variants or `preferredColorScheme` calls.
+
+- **Colors** live in `Theme` (`Theme.swift`): `background` #0F0F23, `surface` #1B1B30 (cards, rows, tab bar, popover), `border` #27273B, `text` #F8FAFC, `secondaryText` #94A3B8, `accent` #22C55E (also `AccentColor` in the asset catalog, so `.tint` and buttons pick it up), `onAccent` for content on green, `warning` #FBBF24 for injury news. All text colors pass 4.5:1. Use `Theme` instead of literal colors.
+- **Applying it:** every screen calls `.themedScreen()` (navy background, hides list/form backgrounds) and list or form rows call `.themedRow()`. Sheets set `.presentationBackground(Theme.background)`, popovers `Theme.surface`. The player list uses `.contentMargins(.top, 4, for: .scrollContent)` to remove the grouped style's large top gap. Don't override text with `foregroundStyle(_:_:)` on a container: it turns `ContentUnavailableView` descriptions white. System `.primary`/`.secondary` text is fine on navy.
+- **Fonts** stay SF Pro with Dynamic Type text styles. Don't add custom fonts.
 
 - **Navigation title** is inline and doubles as the position menu (`.toolbarTitleMenu`). With a large title, iOS only shows the menu after scrolling.
-- **Bottom bar** (iOS 26+) holds the filter button just left of the search field, via `ToolbarItem(.bottomBar)`, `ToolbarSpacer` and `DefaultToolbarItem(kind: .search)`. Before iOS 26 the filter button sits top right. The filter icon fills in when a filter is active.
-- **Rows**, left to right: an `info.circle` button, `webName` with the team short name in grey caption text, then price (secondary) and the sort stat (semibold) as fixed-width trailing columns so numbers line up. News shows under the name, orange unless the player is available.
+- **Tab bar** is custom (`FloodlightsTabBar`), not the iOS 26 glass one: the user found the glass selection animation too busy. A navy rounded bar with a solid green pill behind the selected tab; switching is instant with a selection haptic. Tabs live in a `ZStack` (unselected ones hidden with opacity, hit testing and accessibility off) so each keeps its state, and the bar is a `.safeAreaInset(edge: .bottom)` so lists scroll clear of it. It carries `.isTabBar` and `.isSelected` traits for VoiceOver. Feed, Players, Notes, Profile, each with an SF Symbol and a label; keep it at five tabs or fewer and put secondary screens inside a tab's stack. Unbuilt tabs show a `ContentUnavailableView` describing what will appear there.
+- **Search and sort** on the Players tab sit at the top, because the tab bar owns the bottom: `.searchable` with `.navigationBarDrawer(displayMode: .always)`, and two buttons top right. The first is a `Menu` with an inline `Picker` listing the sort fields (checkmark on the current one); the second (`arrow.up.arrow.down`) flips high-to-low and low-to-high. There is no filter sheet.
+- **Rows**, left to right: an `info.circle` button, `webName` with the team short name in grey caption text, then price (secondary) and the sort stat (semibold) as fixed-width trailing columns so numbers line up. Rows are one line: news is not shown in the row.
+- **Flagged players** (`status.isFlagged`: doubtful, injured, suspended, unavailable, not eligible; not `.unknown`) get a `Theme.warning` yellow name and an `exclamationmark.triangle.fill` icon just before it (between the info button and the name), labelled with `status.title` for VoiceOver. The user asked for a "hazard emoji"; the SF Symbol was used instead so it takes the theme color.
 - **Right-hand stat follows the sort**: points for points and price, `G` for goals, `A` for assists, a percentage for selected by.
-- **Stats popover** uses `.presentationCompactAdaptation(.popover)` so it stays a bubble on iPhone. It shows full name, position, team, ownership, then Season and Advanced stats in a two-column grid. Missing values show as "–".
-- **Filter sheet** has Sort (field plus order) and a Max price slider sized to the current position's cheapest and most expensive player. Slider at the top means no limit. Changing position clears the price limit and keeps the sort.
+- **Stats popover** uses `.presentationCompactAdaptation(.popover)` so it stays a bubble on iPhone. It shows full name, position, team, ownership, then a news callout (yellow with the hazard icon when flagged, grey otherwise; falls back to the status title when a flagged player has no news, and shows "Updated 3 days ago" from `newsAdded`), then Season and Advanced stats in a two-column grid. Missing values show as "–".
+- Changing position keeps the sort field and order.
 - The row's info button uses `.buttonStyle(.borderless)` so tapping the row doesn't open the popover.
 
-The user prefers fewer controls: a minimum-stats section and a player count were removed from the filter sheet on request. Ask before adding controls.
+The user prefers fewer controls: a minimum-stats section, a player count, and then the whole filter sheet with its max price slider were removed on request. Ask before adding controls.
 
 ## Conventions
 
