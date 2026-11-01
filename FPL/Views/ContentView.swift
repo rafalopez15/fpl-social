@@ -35,8 +35,19 @@ struct ContentView: View {
                 }
             }
             .navigationTitle(viewModel.position.title)
+            // Inline so the title menu is available without scrolling.
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbarTitleMenu {
+                Picker("Position", selection: $viewModel.position) {
+                    ForEach(Element.Position.allCases, id: \.self) { position in
+                        Text(position.title).tag(position)
+                    }
+                }
+            }
         }
-        .task {
+        // Runs on appear and again whenever the position changes,
+        // cancelling any fetch still in flight.
+        .task(id: viewModel.position) {
             await viewModel.fetchElements()
         }
     }

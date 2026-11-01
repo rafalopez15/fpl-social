@@ -14,7 +14,8 @@ class ElementViewModel: ObservableObject {
     @Published private(set) var errorMessage: String? = nil
     @Published var searchQuery: String = ""
 
-    let position: Element.Position
+    /// The position being shown. The view refetches whenever this changes.
+    @Published var position: Element.Position
     private let client: FPLAPIClient
 
     init(position: Element.Position = .forward, client: FPLAPIClient = FPLAPIClient()) {
@@ -25,14 +26,17 @@ class ElementViewModel: ObservableObject {
     func fetchElements() async {
         isLoading = true
         errorMessage = nil
-        defer { isLoading = false }
 
         do {
             let elements = try await client.elements(position: position)
+            // A newer fetch (e.g. the position changed) owns the state now.
+            guard !Task.isCancelled else { return }
             sortedElements = elements.sorted { ($0.totalPoints ?? 0) > ($1.totalPoints ?? 0) }
         } catch {
+            guard !Task.isCancelled else { return }
             errorMessage = error.localizedDescription
         }
+        isLoading = false
     }
 
     var filteredElements: [Element] {
