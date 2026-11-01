@@ -9,6 +9,7 @@ import SwiftUI
 
 struct ContentView: View {
     @StateObject private var viewModel = ElementViewModel(position: .forward)
+    @State private var showingFilters = false
 
     var body: some View {
         NavigationStack {
@@ -27,13 +28,25 @@ struct ContentView: View {
                     .padding()
                 } else {
                     List(viewModel.filteredElements) { element in
-                        ElementRow(element: element)
+                        ElementRow(element: element, sort: viewModel.sort)
+                    }
+                    .overlay {
+                        if viewModel.filteredElements.isEmpty && viewModel.filter.isActive {
+                            ContentUnavailableView {
+                                Label("No matching players", systemImage: "line.3.horizontal.decrease.circle")
+                            } description: {
+                                Text("Try loosening the filters.")
+                            } actions: {
+                                Button("Clear filters") { viewModel.filter = ElementFilter() }
+                            }
+                        }
                     }
                     .refreshable { await viewModel.fetchElements() }
-                    .searchable(text: $viewModel.searchQuery,
-                                prompt: "Search \(viewModel.position.title.lowercased())")
                 }
             }
+            // On the Group so the bottom bar keeps its layout while loading.
+            .searchable(text: $viewModel.searchQuery,
+                        prompt: "Search \(viewModel.position.title.lowercased())")
             .navigationTitle(viewModel.position.title)
             // Inline so the title menu is available without scrolling.
             .navigationBarTitleDisplayMode(.inline)
@@ -44,6 +57,19 @@ struct ContentView: View {
                     }
                 }
             }
+            .toolbar {
+                if #available(iOS 26, *) {
+                    // Filters button sits just left of the bottom search bar.
+                    ToolbarItem(placement: .bottomBar) { filterButton }
+                    ToolbarSpacer(.fixed, placement: .bottomBar)
+                    DefaultToolbarItem(kind: .search, placement: .bottomBar)
+                } else {
+                    ToolbarItem(placement: .topBarTrailing) { filterButton }
+                }
+            }
+            .sheet(isPresented: $showingFilters) {
+                FilterView(viewModel: viewModel)
+            }
         }
         // Runs on appear and again whenever the position changes,
         // cancelling any fetch still in flight.
@@ -51,10 +77,31 @@ struct ContentView: View {
             await viewModel.fetchElements()
         }
     }
+
+    private var filterButton: some View {
+        Button {
+            showingFilters = true
+        } label: {
+            Image(systemName: viewModel.filter.isActive
+                  ? "line.3.horizontal.decrease.circle.fill"
+                  : "line.3.horizontal.decrease.circle")
+        }
+        .accessibilityLabel("Sort and filter")
+    }
 }
 
 private struct ElementRow: View {
     let element: Element
+    /// The right-hand stat follows the sort, so sorting by goals shows goals.
+    let sort: ElementSort
+
+    private var stat: String {
+        switch sort {
+        case .points, .price: "\(element.totalPoints ?? 0) pts"
+        case .goals: "\(element.goalsScored ?? 0) G"
+        case .assists: "\(element.assists ?? 0) A"
+        }
+    }
 
     var body: some View {
         HStack {
@@ -72,7 +119,7 @@ private struct ElementRow: View {
                 Text(String(format: "£%.1fm", element.price))
                     .foregroundStyle(.secondary)
                     .frame(minWidth: 52, alignment: .trailing)
-                Text("\(element.totalPoints ?? 0) pts")
+                Text(stat)
                     .fontWeight(.semibold)
                     .frame(minWidth: 56, alignment: .trailing)
             }

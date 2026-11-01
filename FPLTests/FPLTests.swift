@@ -131,3 +131,28 @@ struct ElementDecodingTests {
         #expect(try Self.decode(object).status == expected)
     }
 }
+
+struct ElementFilterTests {
+
+    static func element(price: Int, points: Int?, goals: Int?, assists: Int?) throws -> Element {
+        var object = try ElementDecodingTests.fixtureObject()
+        object["now_cost"] = price
+        object["total_points"] = points ?? NSNull()
+        object["goals_scored"] = goals ?? NSNull()
+        object["assists"] = assists ?? NSNull()
+        return try ElementDecodingTests.decode(object)
+    }
+
+    @Test func defaultFilterMatchesEverythingAndIsInactive() throws {
+        let filter = ElementFilter()
+        #expect(!filter.isActive)
+        #expect(filter.matches(try Self.element(price: 45, points: nil, goals: nil, assists: nil)))
+    }
+
+    @Test func maxPriceIsInclusive() throws {
+        let filter = ElementFilter(maxPrice: 7.5)
+        #expect(filter.isActive)
+        #expect(filter.matches(try Self.element(price: 75, points: 0, goals: 0, assists: 0)))
+        #expect(!filter.matches(try Self.element(price: 76, points: 0, goals: 0, assists: 0)))
+    }
+}
