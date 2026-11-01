@@ -7,50 +7,39 @@
 
 import Foundation
 
+@MainActor
 class ElementViewModel: ObservableObject {
-    @Published var elements: [Element] = []
-    @Published var sortedElements: [Element] = []
-    @Published var isLoading: Bool = true
-    @Published var errorMessage: String? = nil
+    @Published private(set) var sortedElements: [Element] = []
+    @Published private(set) var isLoading: Bool = true
+    @Published private(set) var errorMessage: String? = nil
     @Published var searchQuery: String = ""
-    
-    func fetchElements() {
-        guard let url = URL(string: "http://127.0.0.1:5000/api/elements/position/4") else { return }
-        
+
+    let position: Element.Position
+    private let client: FPLAPIClient
+
+    init(position: Element.Position = .forward, client: FPLAPIClient = FPLAPIClient()) {
+        self.position = position
+        self.client = client
+    }
+
+    func fetchElements() async {
         isLoading = true
         errorMessage = nil
-        
-        URLSession.shared.dataTask(with: url) { [weak self] data, response, error in
-            DispatchQueue.main.async {
-                self?.isLoading = false
-                
-                if let error = error {
-                    self?.errorMessage = "Error fetching elements: \(error.localizedDescription)"
-                    return
-                }
-                
-                guard let data = data else {
-                    self?.errorMessage = "No data returned from server"
-                    return
-                }
-                
-                var decodedData: [Element] = []
-                do {
-                    decodedData = try JSONDecoder().decode([Element].self, from: data)
-                } catch {
-                    self?.errorMessage = "Error decoding elements: \(error.localizedDescription)"
-                }
-                self?.elements = decodedData
-                self?.sortedElements = decodedData.sorted { $0.totalPoints > $1.totalPoints }
-            }
-        }.resume()
+        defer { isLoading = false }
+
+        do {
+            let elements = try await client.elements(position: position)
+            sortedElements = elements.sorted { ($0.totalPoints ?? 0) > ($1.totalPoints ?? 0) }
+        } catch {
+            errorMessage = error.localizedDescription
+        }
     }
-    
+
     var filteredElements: [Element] {
-            if searchQuery.isEmpty {
-                return sortedElements
-            } else {
-                return elements.filter { $0.fullName.localizedCaseInsensitiveContains(searchQuery) }
-            }
+        guard !searchQuery.isEmpty else { return sortedElements }
+        return sortedElements.filter {
+            $0.fullName.localizedCaseInsensitiveContains(searchQuery)
+                || $0.webName.localizedCaseInsensitiveContains(searchQuery)
+        }
     }
 }

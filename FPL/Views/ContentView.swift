@@ -8,42 +8,68 @@
 import SwiftUI
 
 struct ContentView: View {
-    @StateObject private var viewModel = ElementViewModel()
-    
+    @StateObject private var viewModel = ElementViewModel(position: .forward)
+
     var body: some View {
-        NavigationView {
-            if viewModel.isLoading {
-                ProgressView("Loading...")
-                    .progressViewStyle(CircularProgressViewStyle())
-            } else if let errorMessage = viewModel.errorMessage {
-                Text(errorMessage)
-                    .foregroundColor(.red)
-                    .multilineTextAlignment(.center)
-            } else {
-                List(viewModel.filteredElements) { element in
-                    VStack(alignment: .leading) {
-                        let points = String(element.totalPoints)
-                        
-                        Text(element.fullName)
-                            .font(.headline)
-                        Text(points)
-                            .font(.footnote)
-                            .foregroundColor(.primary)
+        NavigationStack {
+            Group {
+                if viewModel.isLoading {
+                    ProgressView("Loading...")
+                } else if let errorMessage = viewModel.errorMessage {
+                    VStack(spacing: 12) {
+                        Text(errorMessage)
+                            .foregroundStyle(.red)
+                            .multilineTextAlignment(.center)
+                        Button("Retry") {
+                            Task { await viewModel.fetchElements() }
+                        }
                     }
+                    .padding()
+                } else {
+                    List(viewModel.filteredElements) { element in
+                        ElementRow(element: element)
+                    }
+                    .refreshable { await viewModel.fetchElements() }
+                    .searchable(text: $viewModel.searchQuery,
+                                prompt: "Search \(viewModel.position.title.lowercased())")
                 }
-                .navigationTitle("Forwards")
-                .searchable(text: $viewModel.searchQuery, prompt: "Search forwards")
             }
+            .navigationTitle(viewModel.position.title)
         }
-        .onAppear {
-            viewModel.fetchElements()
+        .task {
+            await viewModel.fetchElements()
         }
     }
 }
 
-// Preview
-struct ContentView_Previews: PreviewProvider {
-    static var previews: some View {
-        ContentView()
+private struct ElementRow: View {
+    let element: Element
+
+    var body: some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(element.fullName)
+                    .font(.headline)
+                if let news = element.currentNews {
+                    Text(news)
+                        .font(.caption)
+                        .foregroundStyle(element.status == .available ? Color.secondary : Color.orange)
+                }
+            }
+            Spacer()
+            HStack(spacing: 12) {
+                Text(String(format: "£%.1fm", element.price))
+                    .foregroundStyle(.secondary)
+                    .frame(minWidth: 52, alignment: .trailing)
+                Text("\(element.totalPoints ?? 0) pts")
+                    .fontWeight(.semibold)
+                    .frame(minWidth: 56, alignment: .trailing)
+            }
+            .font(.subheadline.monospacedDigit())
+        }
     }
+}
+
+#Preview {
+    ContentView()
 }
