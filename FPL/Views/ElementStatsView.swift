@@ -20,6 +20,10 @@ struct ElementStatsView: View {
                     .foregroundStyle(.secondary)
             }
 
+            if element.status.isFlagged || element.currentNews != nil {
+                NewsCallout(element: element)
+            }
+
             StatSection(title: "Season", stats: [
                 ("Minutes", int(element.minutes)),
                 ("Starts", int(element.starts)),
@@ -62,6 +66,36 @@ struct ElementStatsView: View {
 
     private func decimal(_ value: Double?, places: Int) -> String {
         value.map { String(format: "%.\(places)f", $0) } ?? "–"
+    }
+}
+
+/// Injury or availability news, yellow with a hazard icon when the player is flagged.
+private struct NewsCallout: View {
+    let element: Element
+
+    private var isFlagged: Bool { element.status.isFlagged }
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Image(systemName: isFlagged ? "exclamationmark.triangle.fill" : "info.circle")
+                .foregroundStyle(isFlagged ? Theme.warning : Theme.secondaryText)
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(element.currentNews ?? element.status.title)
+                    .foregroundStyle(isFlagged ? Theme.warning : Theme.text)
+                    .fixedSize(horizontal: false, vertical: true)
+                if let added = element.newsAdded {
+                    Text("Updated \(added, format: .relative(presentation: .named))")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+        .font(.subheadline)
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Theme.background, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .accessibilityElement(children: .combine)
     }
 }
 

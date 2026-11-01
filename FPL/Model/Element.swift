@@ -87,6 +87,27 @@ extension Element {
             let raw = try decoder.singleValueContainer().decode(String.self)
             self = Status(rawValue: raw) ?? .unknown
         }
+
+        /// Flagged players get the hazard icon and a yellow name in the list.
+        /// Unknown codes aren't flagged, since we can't say what they mean.
+        var isFlagged: Bool {
+            switch self {
+            case .available, .unknown: false
+            case .doubtful, .injured, .suspended, .unavailable, .notEligible: true
+            }
+        }
+
+        var title: String {
+            switch self {
+            case .available: "Available"
+            case .doubtful: "Doubtful"
+            case .injured: "Injured"
+            case .suspended: "Suspended"
+            case .unavailable: "Unavailable"
+            case .notEligible: "Not eligible"
+            case .unknown: "Unknown status"
+            }
+        }
     }
 }
 

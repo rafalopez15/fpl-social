@@ -1,23 +1,29 @@
 # fpl-social
 
-An iOS app for Fantasy Premier League. Browse players by position, sort and filter them, and check each player's season and advanced stats.
+An iOS app for Fantasy Premier League. Browse players by position, sort them, spot injured and suspended players at a glance, and check each player's season and advanced stats.
+
+The app is growing into a social FPL app: transfer notes and a feed of friends' activity are planned (tracked in Linear under the Transfer Notes and FPL Social projects). The Feed, Notes and Profile tabs are placeholders until those land.
 
 The app reads from [fplAPI](#backend), a FastAPI backend that wraps the official FPL API. You need the backend running locally to see any data.
 
 ## Features
 
+- **Tabs** for Feed, Players, Notes and Profile. Only Players is built so far.
 - **Players by position.** Tap the title to switch between goalkeepers, defenders, midfielders and forwards.
-- **Sort** by points, price, goals, assists or ownership, high to low or low to high. The column on the right of each row shows the stat you sorted by.
-- **Max price filter** with a slider covering the current position's price range.
+- **Sort** from the top-right menu by points, price, goals, assists or ownership. The arrows button next to it flips between high to low and low to high. The column on the right of each row shows the stat you sorted by.
 - **Search** by short name or full name.
-- **Player stats.** The ⓘ button on each row opens a popover with position, team, ownership, season stats (minutes, goals, assists, clean sheets, bonus, cards and more) and expected stats (xG, xA, xGI, xGC, ICT index).
-- **Availability news** under the player's name, in orange when the player is doubtful, injured or suspended.
+- **Flagged players.** Doubtful, injured, suspended and unavailable players have a yellow name with a warning triangle in front of it.
+- **Player stats.** The ⓘ button on each row opens a popover with the player's injury or availability news (with when it was last updated), position, team, ownership, season stats (minutes, goals, assists, clean sheets, bonus, cards and more) and expected stats (xG, xA, xGI, xGC, ICT index).
 - **Team short names** (ARS, MCI, LIV) next to each player.
 - Pull to refresh.
 
+## Design
+
+The app is dark mode only and uses a theme called Floodlights: midnight navy backgrounds, one green accent and the system font, so text still follows the user's text size setting. The colors live in `FPL/Views/Theme.swift`. The tab bar is custom rather than the iOS 26 glass one, so switching tabs is instant.
+
 ## Requirements
 
-- Xcode 26 or later. The app uses iOS 26 toolbar APIs; on older iOS the filter button moves to the top right.
+- Xcode 26 or later (iOS 26 SDK).
 - iOS 18 or later.
 - The fplAPI backend running on your Mac.
 
@@ -49,7 +55,7 @@ To run on a physical iPhone, `127.0.0.1` won't reach your Mac. Start the backend
 
 ## Tests
 
-Unit tests use Swift Testing and don't need the backend. They cover decoding the player response (including missing and null fields, unknown status codes and dates with fractional seconds) and the price filter.
+Unit tests use Swift Testing and don't need the backend. They cover decoding the player response (including missing and null fields, unknown status codes and dates with fractional seconds) and which players get flagged and how sort values are read.
 
 Run them in Xcode with ⌘U, or from the command line:
 
@@ -67,14 +73,14 @@ GitHub Actions runs the same tests on every push and pull request to `main` that
 
 ```
 FPL/
-  Model/         Element (player), Team, sort and filter types, JSON decoder setup
+  Model/         Element (player), Team, sort options, JSON decoder setup
   Networking/    FPLAPIClient: async/await calls to fplAPI
-  ViewModel/     ElementViewModel: loading, search, sort and filter state
-  Views/         Player list, filter sheet, stats popover
+  ViewModel/     ElementViewModel: loading, search and sort state
+  Views/         Tabs and tab bar, theme, player list, stats popover, placeholder tabs
 FPLTests/        Unit tests
 ```
 
-The app follows MVVM. `ContentView` owns an `ElementViewModel`, which fetches players through `FPLAPIClient` and applies search, sort and filters for the list.
+The app follows MVVM. `ContentView` holds the four tabs and the tab bar. `PlayersView` owns an `ElementViewModel`, which fetches players through `FPLAPIClient` and applies search and sort for the list.
 
 ## Backend
 

@@ -7,151 +7,107 @@
 
 import SwiftUI
 
-struct ContentView: View {
-    @StateObject private var viewModel = ElementViewModel(position: .forward)
-    @State private var showingFilters = false
+/// The app's top-level tabs. Each tab owns its own NavigationStack.
+enum AppTab: CaseIterable, Identifiable {
+    case feed, players, notes, profile
 
-    var body: some View {
-        NavigationStack {
-            Group {
-                // Full-screen spinner only when there's nothing to show yet;
-                // pull-to-refresh keeps the list and uses the system spinner.
-                if viewModel.isLoading && viewModel.elements.isEmpty {
-                    ProgressView("Loading...")
-                } else if let errorMessage = viewModel.errorMessage {
-                    VStack(spacing: 12) {
-                        Text(errorMessage)
-                            .foregroundStyle(.red)
-                            .multilineTextAlignment(.center)
-                        Button("Retry") {
-                            Task { await viewModel.fetchElements() }
-                        }
-                    }
-                    .padding()
-                } else {
-                    List(viewModel.filteredElements) { element in
-                        ElementRow(element: element, team: viewModel.teams[element.team], sort: viewModel.sort)
-                    }
-                    .overlay {
-                        if viewModel.filteredElements.isEmpty && viewModel.filter.isActive {
-                            ContentUnavailableView {
-                                Label("No matching players", systemImage: "line.3.horizontal.decrease.circle")
-                            } description: {
-                                Text("Try loosening the filters.")
-                            } actions: {
-                                Button("Clear filters") { viewModel.filter = ElementFilter() }
-                            }
-                        }
-                    }
-                    .refreshable { await viewModel.fetchElements() }
-                }
-            }
-            // On the Group so the bottom bar keeps its layout while loading.
-            .searchable(text: $viewModel.searchQuery,
-                        prompt: "Search \(viewModel.position.title.lowercased())")
-            .navigationTitle(viewModel.position.title)
-            // Inline so the title menu is available without scrolling.
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbarTitleMenu {
-                Picker("Position", selection: $viewModel.position) {
-                    ForEach(Element.Position.allCases, id: \.self) { position in
-                        Text(position.title).tag(position)
-                    }
-                }
-            }
-            .toolbar {
-                if #available(iOS 26, *) {
-                    // Filters button sits just left of the bottom search bar.
-                    ToolbarItem(placement: .bottomBar) { filterButton }
-                    ToolbarSpacer(.fixed, placement: .bottomBar)
-                    DefaultToolbarItem(kind: .search, placement: .bottomBar)
-                } else {
-                    ToolbarItem(placement: .topBarTrailing) { filterButton }
-                }
-            }
-            .sheet(isPresented: $showingFilters) {
-                FilterView(viewModel: viewModel)
-            }
-        }
-        // Runs on appear and again whenever the position changes,
-        // cancelling any fetch still in flight.
-        .task(id: viewModel.position) {
-            await viewModel.fetchElements()
+    var id: Self { self }
+
+    var title: String {
+        switch self {
+        case .feed: "Feed"
+        case .players: "Players"
+        case .notes: "Notes"
+        case .profile: "Profile"
         }
     }
 
-    private var filterButton: some View {
-        Button {
-            showingFilters = true
-        } label: {
-            Image(systemName: viewModel.filter.isActive
-                  ? "line.3.horizontal.decrease.circle.fill"
-                  : "line.3.horizontal.decrease.circle")
+    var systemImage: String {
+        switch self {
+        case .feed: "house"
+        case .players: "tshirt"
+        case .notes: "note.text"
+        case .profile: "person.crop.circle"
         }
-        .accessibilityLabel("Sort and filter")
     }
 }
 
-private struct ElementRow: View {
-    let element: Element
-    let team: Team?
-    /// The right-hand stat follows the sort, so sorting by goals shows goals.
-    let sort: ElementSort
-    @State private var showingStats = false
-
-    private var stat: String {
-        switch sort {
-        case .points, .price: "\(element.totalPoints ?? 0) pts"
-        case .goals: "\(element.goalsScored ?? 0) G"
-        case .assists: "\(element.assists ?? 0) A"
-        case .selectedBy: String(format: "%.1f%%", element.selectedByPercent ?? 0)
-        }
-    }
+/// Root view: the four tabs plus the custom tab bar.
+///
+/// Uses a ZStack instead of TabView so the theme's flat tab bar replaces the
+/// iOS 26 glass one. Every tab stays alive, so switching keeps scroll position
+/// and loaded data, and the switch itself is instant.
+struct ContentView: View {
+    @State private var selection: AppTab = .feed
 
     var body: some View {
-        HStack(spacing: 12) {
-            Button {
-                showingStats = true
-            } label: {
-                Image(systemName: "info.circle")
-                    .font(.title3)
+        ZStack {
+            ForEach(AppTab.allCases) { tab in
+                let isSelected = tab == selection
+                content(for: tab)
+                    .opacity(isSelected ? 1 : 0)
+                    .allowsHitTesting(isSelected)
+                    .accessibilityHidden(!isSelected)
             }
-            // Borderless so only the icon is tappable, not the whole row.
-            .buttonStyle(.borderless)
-            .accessibilityLabel("Stats for \(element.webName)")
-            .popover(isPresented: $showingStats, arrowEdge: .leading) {
-                ElementStatsView(element: element, team: team)
-                    // Show as a popover bubble on iPhone instead of a full sheet.
-                    .presentationCompactAdaptation(.popover)
-            }
-
-            VStack(alignment: .leading, spacing: 2) {
-                HStack(alignment: .firstTextBaseline, spacing: 6) {
-                    Text(element.webName)
-                        .font(.headline)
-                    if let team {
-                        Text(team.shortName)
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(.secondary)
-                    }
-                }
-                if let news = element.currentNews {
-                    Text(news)
-                        .font(.caption)
-                        .foregroundStyle(element.status == .available ? Color.secondary : Color.orange)
-                }
-            }
-            Spacer()
-            HStack(spacing: 12) {
-                Text(String(format: "£%.1fm", element.price))
-                    .foregroundStyle(.secondary)
-                    .frame(minWidth: 52, alignment: .trailing)
-                Text(stat)
-                    .fontWeight(.semibold)
-                    .frame(minWidth: 56, alignment: .trailing)
-            }
-            .font(.subheadline.monospacedDigit())
         }
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            FloodlightsTabBar(selection: $selection)
+        }
+        .background(Theme.background.ignoresSafeArea())
+    }
+
+    @ViewBuilder
+    private func content(for tab: AppTab) -> some View {
+        switch tab {
+        case .feed: FeedView()
+        case .players: PlayersView()
+        case .notes: NotesView()
+        case .profile: ProfileView()
+        }
+    }
+}
+
+/// Flat tab bar: a navy card with a solid green pill behind the selected tab.
+private struct FloodlightsTabBar: View {
+    @Binding var selection: AppTab
+
+    var body: some View {
+        HStack(spacing: 4) {
+            ForEach(AppTab.allCases) { tab in
+                let isSelected = tab == selection
+                Button {
+                    selection = tab
+                } label: {
+                    VStack(spacing: 3) {
+                        Image(systemName: tab.systemImage)
+                            .font(.system(size: 18, weight: .semibold))
+                            .frame(height: 22)
+                        Text(tab.title)
+                            .font(.caption2.weight(.semibold))
+                    }
+                    .frame(maxWidth: .infinity, minHeight: 48)
+                    .foregroundStyle(isSelected ? Theme.onAccent : Theme.secondaryText)
+                    .background(isSelected ? Theme.accent : .clear,
+                                in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(tab.title)
+                .accessibilityAddTraits(isSelected ? .isSelected : [])
+            }
+        }
+        .padding(6)
+        .background(Theme.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .strokeBorder(Theme.border)
+        }
+        .padding(.horizontal, 12)
+        .padding(.top, 6)
+        .background(Theme.background)
+        .sensoryFeedback(.selection, trigger: selection)
+        .accessibilityElement(children: .contain)
+        .accessibilityAddTraits(.isTabBar)
     }
 }
 

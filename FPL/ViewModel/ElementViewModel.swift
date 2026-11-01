@@ -16,7 +16,6 @@ class ElementViewModel: ObservableObject {
     @Published private(set) var errorMessage: String? = nil
     @Published var searchQuery: String = ""
 
-    @Published var filter = ElementFilter()
     @Published var sort: ElementSort = .points
     @Published var sortAscending = false
 
@@ -24,8 +23,6 @@ class ElementViewModel: ObservableObject {
     @Published var position: Element.Position {
         didSet {
             guard position != oldValue else { return }
-            // Price ranges differ a lot between positions, so drop the price limit.
-            filter.maxPrice = nil
             // Don't show the previous position's players under the new title.
             elements = []
         }
@@ -72,16 +69,10 @@ class ElementViewModel: ObservableObject {
         error is CancellationError || (error as? URLError)?.code == .cancelled
     }
 
-    func resetFilters() {
-        filter = ElementFilter()
-        sort = .points
-        sortAscending = false
-    }
-
-    /// Players matching the search and filters, in the chosen sort order.
+    /// Players matching the search, in the chosen sort order.
     var filteredElements: [Element] {
         elements
-            .filter { filter.matches($0) && matchesSearch($0) }
+            .filter(matchesSearch)
             .sorted { a, b in
                 let lhs = sort.value(for: a), rhs = sort.value(for: b)
                 if lhs != rhs { return sortAscending ? lhs < rhs : lhs > rhs }
@@ -89,15 +80,6 @@ class ElementViewModel: ObservableObject {
                 if a.totalPoints != b.totalPoints { return (a.totalPoints ?? 0) > (b.totalPoints ?? 0) }
                 return a.webName < b.webName
             }
-    }
-
-    // MARK: - Bounds for the filter controls
-
-    /// Cheapest to most expensive price in the loaded players, or `nil` if there's no spread.
-    var priceRange: ClosedRange<Double>? {
-        let prices = elements.map(\.price)
-        guard let low = prices.min(), let high = prices.max(), low < high else { return nil }
-        return low...high
     }
 
     private func matchesSearch(_ element: Element) -> Bool {

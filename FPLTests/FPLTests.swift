@@ -132,7 +132,19 @@ struct ElementDecodingTests {
     }
 }
 
-struct ElementFilterTests {
+struct ElementStatusTests {
+
+    @Test(arguments: [
+        (Element.Status.available, false), (.unknown, false),
+        (.doubtful, true), (.injured, true), (.suspended, true),
+        (.unavailable, true), (.notEligible, true),
+    ])
+    func flagsPlayersWhoMightNotPlay(status: Element.Status, flagged: Bool) {
+        #expect(status.isFlagged == flagged)
+    }
+}
+
+struct ElementSortTests {
 
     static func element(price: Int, points: Int?, goals: Int?, assists: Int?) throws -> Element {
         var object = try ElementDecodingTests.fixtureObject()
@@ -143,16 +155,18 @@ struct ElementFilterTests {
         return try ElementDecodingTests.decode(object)
     }
 
-    @Test func defaultFilterMatchesEverythingAndIsInactive() throws {
-        let filter = ElementFilter()
-        #expect(!filter.isActive)
-        #expect(filter.matches(try Self.element(price: 45, points: nil, goals: nil, assists: nil)))
+    @Test func sortValuesReadTheMatchingField() throws {
+        let element = try Self.element(price: 62, points: 80, goals: 3, assists: 5)
+        #expect(ElementSort.points.value(for: element) == 80)
+        #expect(ElementSort.price.value(for: element) == 6.2)
+        #expect(ElementSort.goals.value(for: element) == 3)
+        #expect(ElementSort.assists.value(for: element) == 5)
     }
 
-    @Test func maxPriceIsInclusive() throws {
-        let filter = ElementFilter(maxPrice: 7.5)
-        #expect(filter.isActive)
-        #expect(filter.matches(try Self.element(price: 75, points: 0, goals: 0, assists: 0)))
-        #expect(!filter.matches(try Self.element(price: 76, points: 0, goals: 0, assists: 0)))
+    @Test func missingStatsSortAsZero() throws {
+        let element = try Self.element(price: 45, points: nil, goals: nil, assists: nil)
+        #expect(ElementSort.points.value(for: element) == 0)
+        #expect(ElementSort.goals.value(for: element) == 0)
+        #expect(ElementSort.assists.value(for: element) == 0)
     }
 }
