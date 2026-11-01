@@ -10,6 +10,8 @@ import Foundation
 @MainActor
 class ElementViewModel: ObservableObject {
     @Published private(set) var elements: [Element] = []
+    /// Teams by id, loaded once. Empty if the teams request failed.
+    @Published private(set) var teams: [Int: Team] = [:]
     @Published private(set) var isLoading: Bool = true
     @Published private(set) var errorMessage: String? = nil
     @Published var searchQuery: String = ""
@@ -48,7 +50,10 @@ class ElementViewModel: ObservableObject {
         defer { if generation == fetchGeneration { isLoading = false } }
 
         do {
+            // Teams load alongside the players; a failure there just hides team names.
+            async let teamsLoaded: Void = loadTeamsIfNeeded()
             let elements = try await client.elements(position: position)
+            await teamsLoaded
             // A newer fetch (e.g. the position changed) owns the state now.
             guard generation == fetchGeneration else { return }
             self.elements = elements
@@ -56,6 +61,11 @@ class ElementViewModel: ObservableObject {
             guard generation == fetchGeneration, !Self.isCancellation(error) else { return }
             errorMessage = error.localizedDescription
         }
+    }
+
+    private func loadTeamsIfNeeded() async {
+        guard teams.isEmpty, let fetched = try? await client.teams() else { return }
+        teams = Dictionary(fetched.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
     }
 
     private static func isCancellation(_ error: Error) -> Bool {

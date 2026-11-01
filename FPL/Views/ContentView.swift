@@ -30,7 +30,7 @@ struct ContentView: View {
                     .padding()
                 } else {
                     List(viewModel.filteredElements) { element in
-                        ElementRow(element: element, sort: viewModel.sort)
+                        ElementRow(element: element, team: viewModel.teams[element.team], sort: viewModel.sort)
                     }
                     .overlay {
                         if viewModel.filteredElements.isEmpty && viewModel.filter.isActive {
@@ -94,6 +94,7 @@ struct ContentView: View {
 
 private struct ElementRow: View {
     let element: Element
+    let team: Team?
     /// The right-hand stat follows the sort, so sorting by goals shows goals.
     let sort: ElementSort
     @State private var showingStats = false
@@ -119,14 +120,21 @@ private struct ElementRow: View {
             .buttonStyle(.borderless)
             .accessibilityLabel("Stats for \(element.webName)")
             .popover(isPresented: $showingStats, arrowEdge: .leading) {
-                ElementStatsView(element: element)
+                ElementStatsView(element: element, team: team)
                     // Show as a popover bubble on iPhone instead of a full sheet.
                     .presentationCompactAdaptation(.popover)
             }
 
             VStack(alignment: .leading, spacing: 2) {
-                Text(element.webName)
-                    .font(.headline)
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Text(element.webName)
+                        .font(.headline)
+                    if let team {
+                        Text(team.shortName)
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                    }
+                }
                 if let news = element.currentNews {
                     Text(news)
                         .font(.caption)

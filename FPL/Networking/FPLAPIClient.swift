@@ -52,6 +52,11 @@ struct FPLAPIClient {
         }
     }
 
+    /// `GET /api/teams`
+    func teams() async throws -> [Team] {
+        try await get("teams")
+    }
+
     // MARK: - Private
 
     private struct ErrorBody: Decodable {

@@ -8,6 +8,7 @@ import SwiftUI
 /// Season and advanced stats for one player, shown in a popover from the list.
 struct ElementStatsView: View {
     let element: Element
+    let team: Team?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -44,10 +45,11 @@ struct ElementStatsView: View {
         .frame(width: 300)
     }
 
-    /// e.g. "Forward · Selected by 46.3%"
+    /// e.g. "Forward · Man City · Selected by 46.3%"
     private var subtitle: String {
         [
             element.position?.singularTitle,
+            team?.name,
             element.selectedByPercent.map { String(format: "Selected by %.1f%%", $0) },
         ]
         .compactMap { $0 }
