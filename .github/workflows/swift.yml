@@ -6,13 +6,17 @@ name: Swift
 on:
   push:
     branches: [ "main" ]
+    paths: [ "ios/**" ]
   pull_request:
     branches: [ "main" ]
+    paths: [ "ios/**" ]
 
 jobs:
   build:
-
-    runs-on: ios-latest
+    runs-on: macos-latest
+    defaults:
+      run:
+        working-directory: ios
 
     steps:
     - uses: actions/checkout@v4
