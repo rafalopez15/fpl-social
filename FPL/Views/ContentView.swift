@@ -94,19 +94,36 @@ private struct ElementRow: View {
     let element: Element
     /// The right-hand stat follows the sort, so sorting by goals shows goals.
     let sort: ElementSort
+    @State private var showingStats = false
 
     private var stat: String {
         switch sort {
         case .points, .price: "\(element.totalPoints ?? 0) pts"
         case .goals: "\(element.goalsScored ?? 0) G"
         case .assists: "\(element.assists ?? 0) A"
+        case .selectedBy: String(format: "%.1f%%", element.selectedByPercent ?? 0)
         }
     }
 
     var body: some View {
-        HStack {
+        HStack(spacing: 12) {
+            Button {
+                showingStats = true
+            } label: {
+                Image(systemName: "info.circle")
+                    .font(.title3)
+            }
+            // Borderless so only the icon is tappable, not the whole row.
+            .buttonStyle(.borderless)
+            .accessibilityLabel("Stats for \(element.webName)")
+            .popover(isPresented: $showingStats, arrowEdge: .leading) {
+                ElementStatsView(element: element)
+                    // Show as a popover bubble on iPhone instead of a full sheet.
+                    .presentationCompactAdaptation(.popover)
+            }
+
             VStack(alignment: .leading, spacing: 2) {
-                Text(element.fullName)
+                Text(element.webName)
                     .font(.headline)
                 if let news = element.currentNews {
                     Text(news)

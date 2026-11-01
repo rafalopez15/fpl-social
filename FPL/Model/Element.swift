@@ -107,6 +107,15 @@ extension Element {
             case .forward: "Forwards"
             }
         }
+
+        var singularTitle: String {
+            switch self {
+            case .goalkeeper: "Goalkeeper"
+            case .defender: "Defender"
+            case .midfielder: "Midfielder"
+            case .forward: "Forward"
+            }
+        }
     }
 
     var position: Position? { Position(rawValue: elementType) }

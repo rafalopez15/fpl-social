@@ -21,7 +21,7 @@ struct ElementFilter: Equatable {
 
 /// What the player list is sorted by.
 enum ElementSort: String, CaseIterable, Identifiable {
-    case points, price, goals, assists
+    case points, price, goals, assists, selectedBy
 
     var id: Self { self }
 
@@ -31,6 +31,7 @@ enum ElementSort: String, CaseIterable, Identifiable {
         case .price: "Price"
         case .goals: "Goals"
         case .assists: "Assists"
+        case .selectedBy: "Selected by"
         }
     }
 
@@ -40,6 +41,7 @@ enum ElementSort: String, CaseIterable, Identifiable {
         case .price: element.price
         case .goals: Double(element.goalsScored ?? 0)
         case .assists: Double(element.assists ?? 0)
+        case .selectedBy: element.selectedByPercent ?? 0
         }
     }
 }
