@@ -69,10 +69,11 @@ class ElementViewModel: ObservableObject {
         error is CancellationError || (error as? URLError)?.code == .cancelled
     }
 
-    /// Players matching the search, in the chosen sort order.
+    /// Selectable players matching the search, in the chosen sort order.
+    /// Players who left the league are hidden (see `Element.isSelectable`).
     var filteredElements: [Element] {
         elements
-            .filter(matchesSearch)
+            .filter { $0.isSelectable && matchesSearch($0) }
             .sorted { a, b in
                 let lhs = sort.value(for: a), rhs = sort.value(for: b)
                 if lhs != rhs { return sortAscending ? lhs < rhs : lhs > rhs }

@@ -132,15 +132,58 @@ struct ElementDecodingTests {
     }
 }
 
-struct ElementStatusTests {
+struct ElementAvailabilityTests {
+
+    static func element(status: String, chance: Int?, news: String = "", canSelect: Bool? = nil) throws -> Element {
+        var object = try ElementDecodingTests.fixtureObject()
+        object["status"] = status
+        object["chance_of_playing_next_round"] = chance ?? NSNull()
+        object["news"] = news
+        if let canSelect { object["can_select"] = canSelect }
+        return try ElementDecodingTests.decode(object)
+    }
+
+    @Test(arguments: [25, 50, 75])
+    func percentageChanceIsDoubtful(chance: Int) throws {
+        let element = try Self.element(status: "d", chance: chance, news: "Knock - \(chance)% chance of playing")
+        #expect(element.availabilityFlag == .doubtful)
+        #expect(element.availabilityDescription == "\(chance)% chance of playing")
+    }
 
     @Test(arguments: [
-        (Element.Status.available, false), (.unknown, false),
-        (.doubtful, true), (.injured, true), (.suspended, true),
-        (.unavailable, true), (.notEligible, true),
+        ("i", "Thigh injury - Unknown return date"),
+        ("i", "Hamstring injury - Expected back 22 Nov"),
+        ("s", "Suspended until 2 Dec"),
     ])
-    func flagsPlayersWhoMightNotPlay(status: Element.Status, flagged: Bool) {
-        #expect(status.isFlagged == flagged)
+    func zeroChanceIsOut(status: String, news: String) throws {
+        #expect(try Self.element(status: status, chance: 0, news: news).availabilityFlag == .out)
+    }
+
+    @Test func unknownReturnDateIsOutEvenWithoutAChance() throws {
+        let element = try Self.element(status: "d", chance: nil, news: "Knee injury - Unknown return date")
+        #expect(element.availabilityFlag == .out)
+    }
+
+    @Test func availablePlayersAreNotFlagged() throws {
+        #expect(try Self.element(status: "a", chance: nil).availabilityFlag == nil)
+        #expect(try Self.element(status: "a", chance: 100).availabilityFlag == nil)
+    }
+
+    @Test func fallsBackToStatusWithoutAChance() throws {
+        #expect(try Self.element(status: "d", chance: nil).availabilityFlag == .doubtful)
+        #expect(try Self.element(status: "i", chance: nil).availabilityFlag == .out)
+        #expect(try Self.element(status: "x", chance: nil).availabilityFlag == nil)
+    }
+
+    @Test func playersWhoLeftAreNotSelectable() throws {
+        let left = try Self.element(status: "u", chance: 0, news: "Has joined Al Hilal permanently")
+        #expect(!left.isSelectable)
+        #expect(try Self.element(status: "i", chance: 0).isSelectable)
+    }
+
+    @Test func canSelectFromTheAPIWins() throws {
+        #expect(!(try Self.element(status: "a", chance: nil, canSelect: false).isSelectable))
+        #expect(try Self.element(status: "u", chance: 0, canSelect: true).isSelectable)
     }
 }
 

@@ -134,16 +134,16 @@ private struct ElementRow: View {
             }
 
             HStack(alignment: .firstTextBaseline, spacing: 6) {
-                if element.status.isFlagged {
+                if let flag = element.availabilityFlag {
                     // Details live in the info popover.
                     Image(systemName: "exclamationmark.triangle.fill")
                         .font(.caption)
-                        .foregroundStyle(Theme.warning)
-                        .accessibilityLabel(element.status.title)
+                        .foregroundStyle(Theme.color(for: flag))
+                        .accessibilityLabel(element.availabilityDescription)
                 }
                 Text(element.webName)
                     .font(.headline)
-                    .foregroundStyle(element.status.isFlagged ? Theme.warning : Theme.text)
+                    .foregroundStyle(element.availabilityFlag.map(Theme.color(for:)) ?? Theme.text)
                 if let team {
                     Text(team.shortName)
                         .font(.caption.weight(.semibold))
