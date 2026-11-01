@@ -22,8 +22,17 @@ enum Theme {
     static let accent = Color.accentColor
     /// Text and icons drawn on top of `accent`.
     static let onAccent = Color(hex: 0x0F0F23)
-    /// Injury and availability news.
+    /// Doubtful players (some chance of playing).
     static let warning = Color(hex: 0xFBBF24)
+    /// Players ruled out (0% chance). 6.8:1 on background, 6.1:1 on surface.
+    static let danger = Color(hex: 0xF87171)
+
+    static func color(for flag: Element.AvailabilityFlag) -> Color {
+        switch flag {
+        case .doubtful: warning
+        case .out: danger
+        }
+    }
 }
 
 extension Color {

@@ -36,6 +36,9 @@ struct Element: Codable, Identifiable, Hashable {
     let newsAdded: Date?
     let chanceOfPlayingNextRound: Int?
     let chanceOfPlayingThisRound: Int?
+    /// FPL's `can_select`: false for players who can't be picked, e.g. they joined
+    /// another club. fplAPI doesn't send it yet, so it's usually nil. See `isSelectable`.
+    let canSelect: Bool?
 
     // Price changes and transfers (costs in tenths of a million)
     let costChangeEvent: Int?
@@ -86,15 +89,6 @@ extension Element {
         init(from decoder: Decoder) throws {
             let raw = try decoder.singleValueContainer().decode(String.self)
             self = Status(rawValue: raw) ?? .unknown
-        }
-
-        /// Flagged players get the hazard icon and a yellow name in the list.
-        /// Unknown codes aren't flagged, since we can't say what they mean.
-        var isFlagged: Bool {
-            switch self {
-            case .available, .unknown: false
-            case .doubtful, .injured, .suspended, .unavailable, .notEligible: true
-            }
         }
 
         var title: String {
@@ -157,6 +151,55 @@ extension Element {
     var currentNews: String? {
         guard let news, !news.isEmpty else { return nil }
         return news
+    }
+}
+
+// MARK: - Availability
+
+extension Element {
+    /// How the list flags a player who might not play next round.
+    enum AvailabilityFlag: Equatable {
+        /// Some chance of playing (25, 50 or 75%). Shown in yellow.
+        case doubtful
+        /// No chance of playing: injured, suspended, or unknown return date. Shown in red.
+        case out
+    }
+
+    /// Based on FPL's chance of playing next round: 1–99% is doubtful, 0% is out.
+    /// Falls back to the status code when FPL sends no chance.
+    var availabilityFlag: AvailabilityFlag? {
+        if currentNews?.localizedCaseInsensitiveContains("unknown return date") == true {
+            return .out
+        }
+        if let chance = chanceOfPlayingNextRound {
+            switch chance {
+            case ..<1: return .out
+            case 1..<100: return .doubtful
+            default: return nil
+            }
+        }
+        switch status {
+        case .available, .unknown: return nil
+        case .doubtful: return .doubtful
+        case .injured, .suspended, .unavailable, .notEligible: return .out
+        }
+    }
+
+    /// Short availability text for VoiceOver and the news callout,
+    /// e.g. "75% chance of playing" or "Suspended".
+    var availabilityDescription: String {
+        if let chance = chanceOfPlayingNextRound, chance < 100 {
+            return "\(chance)% chance of playing"
+        }
+        return status.title
+    }
+
+    /// Whether the player can be picked in FPL. Players who left the league
+    /// (joined another club, released, not in the squad) can't, and are hidden
+    /// from the list. Uses FPL's `can_select` when fplAPI sends it; until then,
+    /// status `u` matches it exactly.
+    var isSelectable: Bool {
+        canSelect ?? (status != .unavailable)
     }
 }
 

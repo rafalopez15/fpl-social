@@ -20,7 +20,7 @@ struct ElementStatsView: View {
                     .foregroundStyle(.secondary)
             }
 
-            if element.status.isFlagged || element.currentNews != nil {
+            if element.availabilityFlag != nil || element.currentNews != nil {
                 NewsCallout(element: element)
             }
 
@@ -69,20 +69,21 @@ struct ElementStatsView: View {
     }
 }
 
-/// Injury or availability news, yellow with a hazard icon when the player is flagged.
+/// Injury or availability news in the flag's color (yellow doubtful, red out),
+/// or grey when the player isn't flagged.
 private struct NewsCallout: View {
     let element: Element
 
-    private var isFlagged: Bool { element.status.isFlagged }
+    private var flagColor: Color? { element.availabilityFlag.map(Theme.color(for:)) }
 
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
-            Image(systemName: isFlagged ? "exclamationmark.triangle.fill" : "info.circle")
-                .foregroundStyle(isFlagged ? Theme.warning : Theme.secondaryText)
+            Image(systemName: flagColor != nil ? "exclamationmark.triangle.fill" : "info.circle")
+                .foregroundStyle(flagColor ?? Theme.secondaryText)
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 2) {
-                Text(element.currentNews ?? element.status.title)
-                    .foregroundStyle(isFlagged ? Theme.warning : Theme.text)
+                Text(element.currentNews ?? element.availabilityDescription)
+                    .foregroundStyle(flagColor ?? Theme.text)
                     .fixedSize(horizontal: false, vertical: true)
                 if let added = element.newsAdded {
                     Text("Updated \(added, format: .relative(presentation: .named))")
