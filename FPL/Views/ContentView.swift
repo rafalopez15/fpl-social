@@ -14,7 +14,9 @@ struct ContentView: View {
     var body: some View {
         NavigationStack {
             Group {
-                if viewModel.isLoading {
+                // Full-screen spinner only when there's nothing to show yet;
+                // pull-to-refresh keeps the list and uses the system spinner.
+                if viewModel.isLoading && viewModel.elements.isEmpty {
                     ProgressView("Loading...")
                 } else if let errorMessage = viewModel.errorMessage {
                     VStack(spacing: 12) {

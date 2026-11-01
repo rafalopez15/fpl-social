@@ -21,12 +21,17 @@ class ElementViewModel: ObservableObject {
     /// The position being shown. The view refetches whenever this changes.
     @Published var position: Element.Position {
         didSet {
+            guard position != oldValue else { return }
             // Price ranges differ a lot between positions, so drop the price limit.
-            if position != oldValue { filter.maxPrice = nil }
+            filter.maxPrice = nil
+            // Don't show the previous position's players under the new title.
+            elements = []
         }
     }
 
     private let client: FPLAPIClient
+    /// Incremented per fetch so only the most recent one updates state.
+    private var fetchGeneration = 0
 
     init(position: Element.Position = .forward, client: FPLAPIClient = FPLAPIClient()) {
         self.position = position
@@ -34,19 +39,27 @@ class ElementViewModel: ObservableObject {
     }
 
     func fetchElements() async {
+        fetchGeneration += 1
+        let generation = fetchGeneration
         isLoading = true
         errorMessage = nil
+        // Always clear loading when the latest fetch ends, including when it's
+        // cancelled, so the spinner can never get stuck.
+        defer { if generation == fetchGeneration { isLoading = false } }
 
         do {
             let elements = try await client.elements(position: position)
             // A newer fetch (e.g. the position changed) owns the state now.
-            guard !Task.isCancelled else { return }
+            guard generation == fetchGeneration else { return }
             self.elements = elements
         } catch {
-            guard !Task.isCancelled else { return }
+            guard generation == fetchGeneration, !Self.isCancellation(error) else { return }
             errorMessage = error.localizedDescription
         }
-        isLoading = false
+    }
+
+    private static func isCancellation(_ error: Error) -> Bool {
+        error is CancellationError || (error as? URLError)?.code == .cancelled
     }
 
     func resetFilters() {
