@@ -5,11 +5,14 @@
 
 import Foundation
 
-/// The current gameweek, shared across tabs so new notes can be tagged with it.
+/// The season's gameweeks and the current one, shared across tabs so notes can
+/// be tagged with a gameweek and the Notes tab can show deadlines.
 @MainActor
 final class GameweekStore: ObservableObject {
     /// Nil until loaded, or if loading failed. Call `loadIfNeeded()` to retry.
     @Published private(set) var current: Int?
+    /// Every gameweek, empty until loaded.
+    @Published private(set) var events: [Event] = []
 
     /// True when the last load failed, so the Notes tab can offer a retry.
     @Published private(set) var didFail = false
@@ -30,7 +33,13 @@ final class GameweekStore: ObservableObject {
             didFail = true
             return
         }
+        self.events = events
         current = Event.currentGameweek(in: events)
+    }
+
+    /// The gameweek's transfer deadline, if gameweeks have loaded.
+    func deadline(for gameweek: Int) -> Date? {
+        events.first { $0.id == gameweek }?.deadlineTime
     }
 }
 

@@ -84,8 +84,17 @@ struct NotesView: View {
                     .listRowInsets(EdgeInsets(top: 0, leading: 4, bottom: 0, trailing: 4))
             }
 
+            // One card per gameweek: the header is the card's first row, so swipe
+            // to delete, undo and VoiceOver keep working as a normal list.
             ForEach(NoteSection.sections(for: notes, currentGameweek: gameweeks.current)) { section in
                 Section {
+                    GameweekHeader(section: section,
+                                   currentGameweek: gameweeks.current,
+                                   deadline: section.gameweek.flatMap(gameweeks.deadline(for:))) { gameweek in
+                        editor = EditorTarget(gameweek: gameweek)
+                    }
+                    .themedRow()
+
                     ForEach(section.notes) { note in
                         Button {
                             editor = EditorTarget(note: note)
@@ -102,13 +111,10 @@ struct NotesView: View {
                         }
                         AccessibilityNotification.Announcement("Note deleted. Undo available.").post()
                     }
-                } header: {
-                    SectionHeader(section: section) { gameweek in
-                        editor = EditorTarget(gameweek: gameweek)
-                    }
                 }
             }
         }
+        .listSectionSpacing(12)
         .listStyle(.insetGrouped)
     }
 }
@@ -139,16 +145,68 @@ private struct UndoToast: View {
     }
 }
 
-/// "Gameweek 9" with a + on the right to add a note to it. Notes with no
-/// gameweek get a plain header.
-private struct SectionHeader: View {
+/// A gameweek card's first row: the title with a "This week" tag or a lock,
+/// the deadline and note count, and a + to add a note. Empty gameweeks get a
+/// muted title so the ones with notes stand out when scanning the season.
+private struct GameweekHeader: View {
     let section: NoteSection
+    let currentGameweek: Int?
+    let deadline: Date?
     let onAdd: (Int) -> Void
 
+    private var isCurrent: Bool { section.gameweek != nil && section.gameweek == currentGameweek }
+
+    private var isPast: Bool {
+        guard let gameweek = section.gameweek, let currentGameweek else { return false }
+        return gameweek < currentGameweek
+    }
+
+    /// e.g. "Deadline Sat, Nov 7 · 2 notes"
+    private var detail: String? {
+        var parts: [String] = []
+        if let deadline {
+            parts.append("Deadline \(deadline.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day()))")
+        }
+        switch section.notes.count {
+        case 0: break
+        case 1: parts.append("1 note")
+        default: parts.append("\(section.notes.count) notes")
+        }
+        return parts.isEmpty ? nil : parts.joined(separator: " · ")
+    }
+
     var body: some View {
-        HStack {
-            Text(section.title)
-            Spacer()
+        HStack(spacing: 8) {
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 6) {
+                    Text(section.title)
+                        .font(.headline)
+                        .foregroundStyle(section.notes.isEmpty ? Theme.secondaryText : Theme.text)
+                    if isCurrent {
+                        Text("This week")
+                            .font(.caption2.weight(.bold))
+                            .foregroundStyle(Theme.onAccent)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(Theme.accent, in: Capsule())
+                    } else if isPast {
+                        Image(systemName: "lock.fill")
+                            .font(.caption2)
+                            .foregroundStyle(Theme.secondaryText)
+                    }
+                }
+                if let detail {
+                    Text(detail)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(accessibilityLabel)
+            .accessibilityAddTraits(.isHeader)
+
+            Spacer(minLength: 0)
+
             if let gameweek = section.gameweek {
                 Button {
                     onAdd(gameweek)
@@ -156,16 +214,24 @@ private struct SectionHeader: View {
                     Image(systemName: "plus")
                         .font(.body.weight(.semibold))
                         .foregroundStyle(Theme.accent)
-                        // 44pt tap target without making the header taller.
                         .frame(width: 44, height: 44)
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.borderless)
-                .padding(.vertical, -12)
-                .padding(.trailing, -12)
+                .padding(.trailing, -10)
                 .accessibilityLabel("Add note to \(section.title)")
             }
         }
+        .padding(.vertical, -4)
+    }
+
+    /// e.g. "Gameweek 8, past gameweek, notes locked. Deadline Sat, Oct 25 · 1 note"
+    private var accessibilityLabel: String {
+        var label = section.title
+        if isCurrent { label += ", this week" }
+        if isPast { label += ", past gameweek, notes locked" }
+        if let detail { label += ". \(detail)" }
+        return label
     }
 }
 
