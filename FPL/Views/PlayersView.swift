@@ -30,7 +30,11 @@ struct PlayersView: View {
                     .padding()
                 } else {
                     List(viewModel.filteredElements) { element in
-                        ElementRow(element: element, team: viewModel.teams[element.team], sort: viewModel.sort)
+                        ElementRow(element: element,
+                                   team: viewModel.teams[element.team],
+                                   sort: viewModel.sort,
+                                   fixtures: viewModel.schedule?.upcoming(for: element.team) ?? [],
+                                   teams: viewModel.teams)
                             .themedRow()
                     }
                     .listStyle(.insetGrouped)
@@ -102,6 +106,10 @@ private struct ElementRow: View {
     let team: Team?
     /// The right-hand stat follows the sort, so sorting by goals shows goals.
     let sort: ElementSort
+    /// Next 3 gameweeks for the stats popover; empty hides that section.
+    let fixtures: [GameweekFixtures]
+    /// All teams, for opponent names in the popover.
+    let teams: [Int: Team]
     @State private var showingStats = false
 
     private var stat: String {
@@ -127,7 +135,7 @@ private struct ElementRow: View {
                                 ? "Stats for \(element.webName)"
                                 : "Stats and news for \(element.webName)")
             .popover(isPresented: $showingStats, arrowEdge: .leading) {
-                ElementStatsView(element: element, team: team)
+                ElementStatsView(element: element, team: team, fixtures: fixtures, teams: teams)
                     .presentationBackground(Theme.surface)
                     // Show as a popover bubble on iPhone instead of a full sheet.
                     .presentationCompactAdaptation(.popover)

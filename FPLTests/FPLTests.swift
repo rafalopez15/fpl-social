@@ -230,3 +230,134 @@ struct ElementSortTests {
         #expect(ElementSort.assists.value(for: element) == 0)
     }
 }
+
+struct FixtureDecodingTests {
+
+    /// One fixture from `GET /api/fixtures?started=false`.
+    static let response = """
+    [
+      {"id": 89, "event": 9, "team_h": 17, "team_a": 9, "team_h_difficulty": 3, "team_a_difficulty": 4,
+       "kickoff_time": "2026-11-02T20:00:00Z", "started": false, "finished": false,
+       "team_h_score": null, "team_a_score": null},
+      {"id": 300, "event": null, "team_h": 1, "team_a": 2, "team_h_difficulty": 2, "team_a_difficulty": 5,
+       "kickoff_time": null, "started": false, "finished": false,
+       "team_h_score": null, "team_a_score": null}
+    ]
+    """
+
+    @Test func decodesFixtures() throws {
+        let fixtures = try JSONDecoder.fplAPI.decode([Fixture].self, from: Data(Self.response.utf8))
+        #expect(fixtures.count == 2)
+
+        let first = fixtures[0]
+        #expect(first.event == 9)
+        #expect(first.teamH == 17 && first.teamA == 9)
+        #expect(first.teamHDifficulty == 3 && first.teamADifficulty == 4)
+        #expect(first.kickoffTime == ISO8601DateFormatter().date(from: "2026-11-02T20:00:00Z"))
+        #expect(!first.started && !first.finished)
+        #expect(first.teamHScore == nil)
+
+        // Postponed: no gameweek or kickoff yet.
+        #expect(fixtures[1].event == nil)
+        #expect(fixtures[1].kickoffTime == nil)
+    }
+
+    @Test func decodesEventsIgnoringExtraFields() throws {
+        let json = """
+        [{"id": 10, "name": "Gameweek 10", "deadline_time": "2026-11-07T11:00:00Z",
+          "deadline_time_epoch": 1793876400, "finished": false, "data_checked": false,
+          "is_previous": false, "is_current": false, "is_next": true,
+          "top_element_info": null, "chip_plays": []}]
+        """
+        let events = try JSONDecoder.fplAPI.decode([Event].self, from: Data(json.utf8))
+        #expect(events.first?.id == 10)
+        #expect(events.first?.isNext == true)
+        #expect(events.first?.isCurrent == false)
+    }
+}
+
+struct FixtureScheduleTests {
+
+    static func fixture(_ id: Int, gw: Int?, home: Int, away: Int,
+                        homeDifficulty: Int = 2, awayDifficulty: Int = 4,
+                        started: Bool = false) -> Fixture {
+        Fixture(id: id, event: gw, teamH: home, teamA: away,
+                teamHDifficulty: homeDifficulty, teamADifficulty: awayDifficulty,
+                kickoffTime: nil, started: started, finished: false,
+                teamHScore: nil, teamAScore: nil)
+    }
+
+    /// A 38-gameweek season with `next` as the next gameweek.
+    static func events(next: Int) -> [Event] {
+        (1...38).map { id in
+            Event(id: id, name: "Gameweek \(id)", deadlineTime: .now, finished: id < next - 1,
+                  isCurrent: id == next - 1, isNext: id == next)
+        }
+    }
+
+    @Test func nextThreeGameweeksFromThePlayersSide() throws {
+        let schedule = try #require(FixtureSchedule(fixtures: [
+            Self.fixture(1, gw: 10, home: 1, away: 5, homeDifficulty: 2, awayDifficulty: 4),
+            Self.fixture(2, gw: 11, home: 6, away: 1, homeDifficulty: 3, awayDifficulty: 5),
+            Self.fixture(3, gw: 12, home: 1, away: 7),
+            Self.fixture(4, gw: 13, home: 8, away: 1),
+            Self.fixture(5, gw: 10, home: 2, away: 3),
+        ], events: Self.events(next: 10)))
+
+        let upcoming = schedule.upcoming(for: 1)
+        #expect(upcoming.map(\.gameweek) == [10, 11, 12])
+        #expect(upcoming[0].fixtures == [TeamFixture(id: 1, opponent: 5, isHome: true, difficulty: 2)])
+        #expect(upcoming[1].fixtures == [TeamFixture(id: 2, opponent: 6, isHome: false, difficulty: 5)])
+    }
+
+    @Test func blankGameweekIsEmptyNotSkipped() throws {
+        let schedule = try #require(FixtureSchedule(fixtures: [
+            Self.fixture(1, gw: 10, home: 1, away: 5),
+            Self.fixture(2, gw: 12, home: 1, away: 6),
+            Self.fixture(3, gw: 13, home: 1, away: 7),
+        ], events: Self.events(next: 10)))
+
+        let upcoming = schedule.upcoming(for: 1)
+        #expect(upcoming.map(\.gameweek) == [10, 11, 12])
+        #expect(upcoming[1].fixtures.isEmpty)
+    }
+
+    @Test func doubleGameweekShowsBothFixtures() throws {
+        let schedule = try #require(FixtureSchedule(fixtures: [
+            Self.fixture(1, gw: 10, home: 1, away: 5),
+            Self.fixture(2, gw: 10, home: 6, away: 1),
+        ], events: Self.events(next: 10)))
+
+        #expect(schedule.upcoming(for: 1)[0].fixtures.map(\.opponent) == [5, 6])
+    }
+
+    @Test func postponedAndStartedMatchesAreLeftOut() throws {
+        let schedule = try #require(FixtureSchedule(fixtures: [
+            Self.fixture(1, gw: nil, home: 1, away: 5),
+            Self.fixture(2, gw: 10, home: 1, away: 6, started: true),
+            Self.fixture(3, gw: 11, home: 1, away: 7),
+        ], events: Self.events(next: 10)))
+
+        let upcoming = schedule.upcoming(for: 1)
+        #expect(upcoming[0].fixtures.isEmpty)
+        #expect(upcoming[1].fixtures.map(\.opponent) == [7])
+    }
+
+    @Test func endOfSeasonShowsOnlyRemainingGameweeks() throws {
+        let schedule = try #require(FixtureSchedule(fixtures: [
+            Self.fixture(1, gw: 37, home: 1, away: 5),
+            Self.fixture(2, gw: 38, home: 6, away: 1),
+        ], events: Self.events(next: 37)))
+
+        #expect(schedule.upcoming(for: 1).map(\.gameweek) == [37, 38])
+    }
+
+    @Test func noScheduleWithoutFixturesOrNextGameweek() {
+        #expect(FixtureSchedule(fixtures: [], events: Self.events(next: 10)) == nil)
+
+        let seasonOver = (1...38).map {
+            Event(id: $0, name: "", deadlineTime: .now, finished: true, isCurrent: $0 == 38, isNext: false)
+        }
+        #expect(FixtureSchedule(fixtures: [Self.fixture(1, gw: 38, home: 1, away: 2)], events: seasonOver) == nil)
+    }
+}

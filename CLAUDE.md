@@ -41,6 +41,8 @@ Endpoints the app uses:
 |---|---|---|
 | `GET /api/elements/position/{1-4}` | `[Element]` | 404 when empty; the client turns that into `[]` |
 | `GET /api/teams` | `[Team]` | Loaded once per launch |
+| `GET /api/fixtures?started=false` | `[Fixture]` | Matches still to be played, by kickoff. Loaded once per launch |
+| `GET /api/events` | `[Event]` | Gameweeks; `is_next` picks where upcoming fixtures start. Loaded with fixtures |
 | `GET /api/elements`, `GET /api/elements/{id}` | `[Element]`, `Element` | Wrapped in the client, not used by the UI yet |
 
 The backend returns `503 {"detail": "FPL data is currently unavailable"}` before it has loaded FPL data. Error bodies are `{"detail": "..."}` and the client surfaces `detail` as the error message.
@@ -56,6 +58,7 @@ FPL/
     Element.swift               Player model, Status and Position enums, display helpers, JSONDecoder.fplAPI
     ElementSort.swift           ElementSort (points, price, goals, assists, selected by)
     Team.swift                  Team id, name, short name
+    Fixture.swift               Fixture, Event, FixtureSchedule (a team's next gameweeks)
   Networking/
     FPLAPIClient.swift          async/await client, maps HTTP errors to APIError
   ViewModel/
@@ -71,7 +74,7 @@ FPL/
 FPLTests/FPLTests.swift         Swift Testing: decoding and sort tests
 ```
 
-Data flow: `PlayersView` owns an `ElementViewModel` (`@StateObject`). `.task(id: viewModel.position)` calls `fetchElements()` on appear and on every position change. The view model fetches players and, on the first load, teams in parallel. `filteredElements` applies search and the sort on every read; lists are small (under 300 players per position), so nothing is cached.
+Data flow: `PlayersView` owns an `ElementViewModel` (`@StateObject`). `.task(id: viewModel.position)` calls `fetchElements()` on appear and on every position change. The view model fetches players and, until they've loaded, teams and the fixture schedule in parallel. Teams or fixtures failing only hides team names or the popover's fixtures, and they're retried on the next fetch. `filteredElements` applies search and the sort on every read; lists are small (under 300 players per position), so nothing is cached.
 
 ## Model rules
 
@@ -107,7 +110,8 @@ The app uses the **Floodlights** theme (picked from three directions suggested b
 - **Flagged players** (`element.availabilityFlag`) get a colored name and an `exclamationmark.triangle.fill` icon just before it (between the info button and the name), labelled with `availabilityDescription` for VoiceOver. **Yellow** (`Theme.warning`, `.doubtful`): a 1–99% chance of playing next round (FPL uses 25/50/75). **Red** (`Theme.danger` #F87171, `.out`): a 0% chance, which covers injuries with or without a return date and suspensions; news containing "Unknown return date" is always red. With no chance from FPL it falls back to status (`d` yellow; `i`, `s`, `u`, `n` red). The user asked for a "hazard emoji"; the SF Symbol was used instead so it takes the theme color.
 - **Players who left the league are hidden** (`element.isSelectable`): hidden when FPL's `can_select` is false or `removed` is true (joined another club, released, not in squad). Missing fields mean the player is shown. Hide them in the app rather than the API, because transfer notes and the feed will still need to show departed players.
 - **Right-hand stat follows the sort**: points for points and price, `G` for goals, `A` for assists, a percentage for selected by.
-- **Stats popover** uses `.presentationCompactAdaptation(.popover)` so it stays a bubble on iPhone. It shows full name, position, team, ownership, then a news callout (in the flag's yellow or red with the hazard icon when flagged, grey otherwise; falls back to `availabilityDescription` when a flagged player has no news, and shows "Updated 3 days ago" from `newsAdded`), then Season and Advanced stats in a two-column grid. Missing values show as "–".
+- **Stats popover** uses `.presentationCompactAdaptation(.popover)` so it stays a bubble on iPhone. Sections are 12pt apart with a `Theme.border` hairline between them, and stat labels stay on one line (footnote size). It shows full name, position and team, ownership on its own line, then a news callout (in the flag's yellow or red with the hazard icon when flagged, grey otherwise; falls back to `availabilityDescription` when a flagged player has no news, and shows "Updated 3 days ago" from `newsAdded`), then Fixtures, then Season and Advanced stats in a two-column grid. Missing values show as "–".
+- **Fixtures** in the popover cover the next 3 gameweeks (the `is_next` gameweek and the two after it, fewer at the end of the season), one column each: `GW10`, the opponent's short name with (H)/(A), and a 1–5 difficulty chip from the player's side (`team_h_difficulty` at home, `team_a_difficulty` away) colored by `Theme.difficultyColors` (green easy to dark red hard, following FPL). A blank gameweek shows "–" rather than skipping ahead; a double stacks both fixtures. Upcoming means `started == false`, not `finished`, which FPL only sets once bonus points are confirmed. Postponed matches (no `event`) aren't shown. With no schedule (empty list, 503, season over) the section is hidden.
 - Changing position keeps the sort field and order.
 - The row's info button uses `.buttonStyle(.borderless)` so tapping the row doesn't open the popover.
 

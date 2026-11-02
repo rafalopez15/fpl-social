@@ -58,14 +58,26 @@ struct FPLAPIClient {
         try await get("teams")
     }
 
+    /// `GET /api/fixtures?started=false`: matches still to be played, ordered by kickoff.
+    func upcomingFixtures() async throws -> [Fixture] {
+        try await get("fixtures", query: [URLQueryItem(name: "started", value: "false")])
+    }
+
+    /// `GET /api/events`: every gameweek of the season.
+    func events() async throws -> [Event] {
+        try await get("events")
+    }
+
     // MARK: - Private
 
     private struct ErrorBody: Decodable {
         let detail: String
     }
 
-    private func get<T: Decodable>(_ path: String) async throws -> T {
-        let (data, response) = try await session.data(from: baseURL.appendingPathComponent(path))
+    private func get<T: Decodable>(_ path: String, query: [URLQueryItem] = []) async throws -> T {
+        var url = baseURL.appendingPathComponent(path)
+        if !query.isEmpty { url.append(queryItems: query) }
+        let (data, response) = try await session.data(from: url)
 
         guard let http = response as? HTTPURLResponse else { throw APIError.invalidResponse }
 

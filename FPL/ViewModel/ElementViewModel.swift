@@ -12,6 +12,9 @@ class ElementViewModel: ObservableObject {
     @Published private(set) var elements: [Element] = []
     /// Teams by id, loaded once. Empty if the teams request failed.
     @Published private(set) var teams: [Int: Team] = [:]
+    /// Upcoming fixtures, loaded once. Nil until loaded, or when there are none
+    /// to show; the stats popover then hides its fixtures section.
+    @Published private(set) var schedule: FixtureSchedule?
     @Published private(set) var isLoading: Bool = true
     @Published private(set) var errorMessage: String? = nil
     @Published var searchQuery: String = ""
@@ -47,10 +50,13 @@ class ElementViewModel: ObservableObject {
         defer { if generation == fetchGeneration { isLoading = false } }
 
         do {
-            // Teams load alongside the players; a failure there just hides team names.
+            // Teams and fixtures load alongside the players. A failure there just
+            // hides team names or fixtures, and they're retried on the next fetch.
             async let teamsLoaded: Void = loadTeamsIfNeeded()
+            async let scheduleLoaded: Void = loadScheduleIfNeeded()
             let elements = try await client.elements(position: position)
             await teamsLoaded
+            await scheduleLoaded
             // A newer fetch (e.g. the position changed) owns the state now.
             guard generation == fetchGeneration else { return }
             self.elements = elements
@@ -63,6 +69,14 @@ class ElementViewModel: ObservableObject {
     private func loadTeamsIfNeeded() async {
         guard teams.isEmpty, let fetched = try? await client.teams() else { return }
         teams = Dictionary(fetched.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+    }
+
+    private func loadScheduleIfNeeded() async {
+        guard schedule == nil else { return }
+        async let fixtures = client.upcomingFixtures()
+        async let events = client.events()
+        guard let fixtures = try? await fixtures, let events = try? await events else { return }
+        schedule = FixtureSchedule(fixtures: fixtures, events: events)
     }
 
     private static func isCancellation(_ error: Error) -> Bool {
