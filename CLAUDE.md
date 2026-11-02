@@ -6,7 +6,7 @@ Guidance for Claude Code when working in this repo.
 
 FPL is a SwiftUI iOS app for browsing Fantasy Premier League players. It doesn't call FPL directly. It talks to **fplAPI**, a separate FastAPI backend (its own repo) that wraps the FPL API and serves cleaned-up JSON under `/api`. FPL calls players "elements", and the code keeps that name.
 
-Current features: a tab bar (Feed, Players, Notes, Profile), and on the Players tab a player list per position, sorting, search, a stats popover per player, and team short names. Notes lets you write notes tagged with the gameweek (stored on the device). Profile links your FPL team by manager ID. Feed is a placeholder; the backlog for them lives in Linear (team FPL Social, projects Transfer Notes and FPL Social).
+Current features: a tab bar (Feed, Players, Notes, Profile), and on the Players tab a player list per position, sorting, search, a stats popover per player, and team short names. Notes lets you write notes tagged with the gameweek (stored on the device), and asks why when you make a transfer. Profile links your FPL team by manager ID. Feed is a placeholder; the backlog for them lives in Linear (team FPL Social, projects Transfer Notes and FPL Social).
 
 ## Build and test
 
@@ -43,6 +43,8 @@ Endpoints the app uses:
 | `GET /api/teams` | `[Team]` | Loaded once per launch |
 | `GET /api/fixtures?started=false` | `[Fixture]` | Matches still to be played, by kickoff. Loaded once per launch |
 | `GET /api/managers/{id}` | `Manager` | Profile's link flow and linked team. 404 "Manager not found", 503 "FPL is unavailable right now". Called live from FPL, cached up to 60s by Vercel |
+| `GET /api/managers/{id}/transfers` | `[Transfer]` | Newest first. `time` has fractional seconds. Checked on launch and on returning to the app for transfer notes; Profile lists them |
+| `GET /api/managers/{id}/history` | `ManagerHistory` | Transfers per gameweek and chips used, for Profile's free transfers. Only `event`, `event_transfers` and chips are decoded |
 | `GET /api/events` | `[Event]` | Gameweeks; `is_next` picks where upcoming fixtures start. Loaded with fixtures |
 | `GET /api/elements`, `GET /api/elements/{id}` | `[Element]`, `Element` | Wrapped in the client, not used by the UI yet |
 
@@ -62,6 +64,8 @@ FPL/
     Fixture.swift               Fixture, Event, FixtureSchedule (a team's next gameweeks)
     Note.swift                  SwiftData Note, NotePlayer, NoteSection (grouping by gameweek)
     Manager.swift               Manager (an FPL team from /managers/{id}), LinkedTeam
+    Transfer.swift              Transfer (from /managers/{id}/transfers), NoteTransfer saved on a note
+    History.swift               ManagerHistory (from /managers/{id}/history), FreeTransfers
   Networking/
     FPLAPIClient.swift          async/await client, maps HTTP errors to APIError
   ViewModel/
@@ -75,8 +79,9 @@ FPL/
     PlayersView.swift           Players tab: list, title menu, toolbar, ElementRow
     FeedView.swift              Feed tab (placeholder, FPL-15)
     NotesView.swift             Notes tab: every gameweek so far with a + to add, edit, swipe to delete
-    NoteEditorView.swift        Sheet to write or edit a note, with linked player chips
-    ProfileView.swift           Profile tab: link your FPL team, then change or unlink it
+    NoteEditorView.swift        Sheet to write or edit a note, with linked player chips or the transfer
+    TransferPromptView.swift    "N new transfers" sheet asking why, one note per transfer; TransferLine
+    ProfileView.swift           Profile tab: link your FPL team, its stats and the season's transfers
     ElementStatsView.swift      Stats popover content
 FPLTests/FPLTests.swift         Swift Testing: decoding and sort tests
 ```
@@ -104,7 +109,7 @@ Notes (FPL-10) are personal and stored on the device with SwiftData. `ContentVie
 - The list is built from gameweeks, so with no gameweeks and no notes it shows a spinner, then "Couldn't load gameweeks" with Retry (`GameweekStore.didFail`). Storing gameweeks with the user (once accounts exist) may remove this; for now it relies on the API.
 - **Notes from past gameweeks are read-only** (`Note.isLocked`): they open with the text, chips without ×, a lock line and only a Done button, so your reasoning at the time can't be rewritten. That includes a note just added to an earlier gameweek; the editor warns "can't be edited after saving" before you save one. Notes from the current gameweek, with no gameweek, or while the current gameweek is unknown stay editable. Swipe to delete works on every note, past ones included, since it's the only fix for a mistake in a locked note. Deleting shows a "Note deleted · Undo" toast above the tab bar for 5 seconds (and a VoiceOver announcement); Undo re-inserts a copy (`DeletedNote`) with the same gameweek, dates, text and players. The user preferred undo over a confirmation alert.
 - Linked players are stored as `NotePlayer` (id plus `webName`), so notes show names without loading the player list.
-- Notes are written from a gameweek's `+` on the Notes tab, or from the stats popover's `square.and.pencil` button, which writes one for the current gameweek and links that player. The popover closes first and the editor sheet opens from the row in `onChange(of: showingStats)`, because a sheet can't present while the popover is up.
+- Notes are written from a gameweek's `+` on the Notes tab, from a transfer on Profile, or from the stats popover's `square.and.pencil` button, which writes one for the current gameweek and links that player. The popover closes first and the editor sheet opens from the row in `onChange(of: showingStats)`, because a sheet can't present while the popover is up.
 - There's no player picker in the editor yet; players can only be linked from the popover, and unlinked with the chip's ×.
 
 ## Linked FPL team
@@ -114,8 +119,21 @@ Profile links your FPL team by manager ID (FPL-30). There are no accounts yet (F
 - `LinkedTeamStore` (environment object from `ContentView`) saves a `LinkedTeam` (id, team name, manager name) as JSON in UserDefaults under `linkedTeam`, so the link survives relaunches and shows without a network call. `refresh()` fetches points and rank for the card and keeps the saved names if it fails. Transfer notes (FPL-12) read the manager ID from here.
 - The link flow (`LinkTeamModel`): a digits-only field (capped at 10 digits; pasting an FPL URL keeps only its digits), "Find team", then an "Is this your team?" card with team name, manager name, points and rank. Nothing is saved until "Link team". "Not my team" goes back to the field with the ID kept.
 - Errors show under the field: 404 "No FPL team with that ID" (red, no retry, since retrying won't help), 503 "FPL is down or updating..." and connection failures (yellow, the button becomes "Try again").
-- Linked: a card with team, manager name, ID, overall points, overall rank and last gameweek's points, plus "Change team" (the current link stays until a new team is confirmed; Cancel returns) and "Unlink team" (confirmation dialog).
+- Linked: a card with team, manager name, ID, overall points, overall rank, last gameweek's points, team value and money in the bank (`last_deadline_value`, `last_deadline_bank`: as of the last deadline, so they don't move until the next one), and free transfers. FPL only gives the signed-in manager their free transfers, so `FreeTransfers.available` works them out from `/managers/{id}/history`: 1 after the gameweek you joined, +1 per gameweek minus those used (never below 0), up to 5, a Wildcard or Free Hit keeps what you had without adding 1 (the user confirmed this against their own team), and transfers already made for the next gameweek are taken off. It can't know one-off top-ups FPL announces mid-season (like 2024/25's AFCON boost to 5); if FPL changes the rules, update it there. A `…` menu in the card's corner holds "Change team" (the current link stays until a new team is confirmed; Cancel returns) and "Unlink team" (confirmation dialog). They used to be buttons below the card; the user moved them up so they don't have to scroll past the transfers.
+- Below the card, "Transfers" lists the season's transfers from `/managers/{id}/transfers`, one card per gameweek (latest first, `NamedTransfer.byGameweek`), with the date and, when one was written, the transfer note. Tapping a transfer (rows end in a chevron) opens its note, or starts one in `NoteEditorView(gameweek:transfer:)`: a transfer note filed under that transfer's gameweek and dated by it, the same as one from the prompt, so it shows on Notes and in the popover. Notes for past gameweeks lock once saved, as elsewhere; the user chose this. They load with `refresh()`, together with the player names from `/api/elements`, and update when the transfer prompt finds new ones. This list is from the API and covers the whole season; transfer notes only exist for transfers made after linking.
+- There's no current squad yet: fplAPI has no picks endpoint (FPL's `/entry/{id}/event/{gw}/picks/`).
 - Profile hides its title bar, like Notes.
+
+## Transfer notes
+
+When you make a transfer in FPL, the app asks why (FPL-12). Decisions are on the ticket.
+
+- `LinkedTeamStore.checkForTransfers()` runs on launch, when a team is linked and when the app becomes active (`ContentView`). It fetches `/managers/{id}/transfers`, keeps those made after `transfersSeenUntil` (UserDefaults), resolves names from `/api/elements` and sets `pendingTransfers`. Linking sets `transfersSeenUntil` to now, so the season's earlier transfers are never prompted. FPL doesn't push transfers and Vercel caches for 60s, so a new transfer can take a minute to show.
+- `ContentView` shows `TransferPromptView` while `pendingTransfers` isn't empty: one card per transfer (IN with price, OUT, a "Why did you bring in X?" field) and one Save. Later and Save both save a `Note` per transfer, with `transfer` set (`NoteTransfer`: both players, the price paid for the player in, what the player out sold for (`outCost`, FPL's `element_out_cost`, which can be below his price then because FPL keeps half of any rise), time), `gameweek` = the transfer's `event` and `createdAt` = its time, then `finishPrompt()` moves `transfersSeenUntil` past them. Swipe-to-dismiss is disabled so transfers can't be lost.
+- A skipped transfer note has empty text. It shows on the Notes tab as "Why did you bring in X? Tap to write it." and stays editable even in a past gameweek until written once (`Note.isLocked` ignores empty text).
+- The stats popover shows your latest transfer of the player this season (`Note.latestTransfer`), from `LinkedTeamStore.transferHistory` so it covers transfers made before linking: "Bought in GW9" with the price paid, or "Sold in GW8" with the selling price and who replaced him, then the note from that transfer if there is one ("No note written." for a skipped one). Nothing if he wasn't transferred this season or no team is linked. Before the history has loaded it falls back to transfer notes. `ElementRow` passes the history in. The user wanted this in the popover, not as a tag on the list rows.
+- The popover's `@Query` needs `.modelContext(modelContext)` passed from `ElementRow`: popover content didn't inherit the model container and the query came back empty.
+- To test the prompt without making real transfers, launch with `-transfersSeenUntil "<date>2026-10-28T00:00:00Z</date>"` (argument-domain UserDefaults) after linking manager 1.
 
 ## Loading state
 

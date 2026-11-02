@@ -17,6 +17,7 @@ The app reads from [fplAPI](#backend), a FastAPI backend that wraps the official
 - **Team short names** (ARS, MCI, LIV) next to each player.
 - **Notes.** Write notes about who you're watching or holding, from the Notes tab or from a player's stats popover (which links that player). Each note is tagged with the gameweek and stored on your device.
 - **Link your FPL team.** Enter your FPL manager ID on the Profile tab to link your team and see its points and rank. It's saved on your device, no sign-in needed.
+- **Transfer notes.** With your team linked, the app notices new transfers when you open it and asks why you made them. Your reasoning shows in the player's stats popover and on the Notes tab.
 - Pull to refresh.
 
 ## Design
