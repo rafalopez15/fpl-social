@@ -25,13 +25,15 @@ The app is dark mode only and uses a theme called Floodlights: midnight navy bac
 
 - Xcode 26 or later (iOS 26 SDK).
 - iOS 18 or later.
-- The fplAPI backend running on your Mac.
+- An internet connection (the app uses the deployed fplAPI).
 
 ## Getting started
 
 ### Backend
 
-Clone the fplAPI repo and start it on port 5000:
+The app uses the production fplAPI at `https://fpl-api-six.vercel.app/api`, so there's nothing to run locally. The first request after a few idle minutes can take 1–2 seconds while Vercel starts an instance.
+
+To work against a local backend instead, clone the fplAPI repo, start it on port 5000 and set `baseURL` in `FPL/Networking/FPLAPIClient.swift` to `http://127.0.0.1:5000/api`:
 
 ```sh
 uvicorn main:app --reload --port=5000
@@ -39,18 +41,16 @@ uvicorn main:app --reload --port=5000
 
 Check it's up with `curl http://127.0.0.1:5000/api/elements/1`. The interactive docs are at `http://127.0.0.1:5000/docs`.
 
-The app looks for the backend at `http://127.0.0.1:5000/api`. To use a different host or port, change `baseURL` in `FPL/Networking/FPLAPIClient.swift`.
-
 ### App
 
 Open `FPL.xcodeproj` in Xcode, pick an iPhone simulator and run the `FPL` scheme.
 
-To run on a physical iPhone, `127.0.0.1` won't reach your Mac. Start the backend with `--host 0.0.0.0` and point `baseURL` at your Mac's local IP address.
+With a local backend, `127.0.0.1` won't reach your Mac from a physical iPhone. Start the backend with `--host 0.0.0.0` and point `baseURL` at your Mac's local IP address.
 
 ### Troubleshooting
 
-- **"Could not connect to the server"**: the backend isn't running, or it's on a different port. `fastapi dev main.py` uses port 8000, not 5000.
-- **403 errors with the backend stopped**: macOS AirPlay Receiver also uses port 5000. Turn it off in System Settings → General → AirDrop & Handoff, or run the backend on another port.
+- **"Could not connect to the server"** (local backend): it isn't running, or it's on a different port. `fastapi dev main.py` uses port 8000, not 5000.
+- **403 errors with the local backend stopped**: macOS AirPlay Receiver also uses port 5000. Turn it off in System Settings → General → AirDrop & Handoff, or run the backend on another port.
 - **"FPL data is currently unavailable"**: the backend started but hasn't loaded FPL data yet. Give it a moment and pull to refresh.
 
 ## Tests
