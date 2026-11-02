@@ -131,6 +131,26 @@ The app uses the **Floodlights** theme (picked from three directions suggested b
 
 The user prefers fewer controls: a minimum-stats section, a player count, and then the whole filter sheet with its max price slider were removed on request. Ask before adding controls.
 
+## Pull requests and commits
+
+Shared with the fplAPI repo.
+
+**PR title:** `FPL-<n>: <what the PR does>`, imperative and specific, e.g. `FPL-26: Fixtures endpoint with difficulty ratings`. The issue id links the PR to Linear.
+
+**PR description:**
+
+1. First line: `Closes FPL-<n>.` if the PR finishes the ticket, or `Part of FPL-<n>.` if the ticket has work left (e.g. a backend half). "Closes" makes Linear mark the ticket Done on merge.
+2. One or two sentences on what the PR does for the user or app, not how.
+3. `## Changes`: short bullets, one per real change, each giving the specific behavior and the reason, and naming the files, fields or screens involved. No bullet should fit an unrelated PR unchanged.
+4. `## Testing`: what was checked and how (tests, simulator or device runs, which screens and cases). Say plainly what wasn't checked yet.
+5. Extra sections only when needed: `## Breaking change`, `## Before merging`, `## After merging`.
+
+**Style:** plain, direct sentences. No emoji in headings, no bold for emphasis, no em dashes. No filler or hype ("robust", "seamless", "leverage", "streamline", "This PR introduces..."). Concrete facts over adjectives: numbers, field names, endpoint paths, before/after behavior. No closing summary paragraph. No AI attribution anywhere, in PRs or commits: no "Generated with Claude Code", no Co-Authored-By lines.
+
+**Commits:** one logical change per commit, each leaving the app working. Short imperative subject, then a body explaining what changed and why.
+
+**Branches and merging:** start each story on a fresh branch from an up-to-date `main`, named with the issue id (Linear's branch name works). Merge PRs with a merge commit, not squash.
+
 ## Conventions
 
 - Deployment target is iOS 18, built with the iOS 26+ SDK. Wrap newer APIs in `if #available(iOS 26, *)` with an iOS 18 fallback.
