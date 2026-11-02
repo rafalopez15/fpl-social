@@ -5,9 +5,10 @@
 
 import Foundation
 
-/// Client for the fplAPI backend (`uvicorn main:app --reload --port=5000`, all routes under `/api`).
+/// Client for the fplAPI backend, all routes under `/api`.
 struct FPLAPIClient {
-    var baseURL: URL = URL(string: "http://127.0.0.1:5000/api")!
+    /// Production fplAPI on Vercel. For a local backend, use `http://127.0.0.1:5000/api`.
+    var baseURL: URL = URL(string: "https://fpl-api-six.vercel.app/api")!
     var session: URLSession = .shared
 
     enum APIError: LocalizedError {

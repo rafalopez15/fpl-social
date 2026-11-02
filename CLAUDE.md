@@ -31,10 +31,9 @@ CI (`.github/workflows/swift.yml`) runs the same unit tests on `macos-26` with t
 
 ## Backend
 
-- The app expects fplAPI at `http://127.0.0.1:5000/api` (`FPLAPIClient.baseURL`). The backend is run with `uvicorn main:app --reload --port=5000`. Its own docs say `fastapi dev main.py`, which uses port 8000; if the app can't connect, check which port the server is on.
-- `127.0.0.1` only works in the simulator. A physical device needs the Mac's LAN IP and the server started with `--host 0.0.0.0`.
-- macOS AirPlay Receiver also listens on port 5000. With the backend stopped, requests get a 403 from AirPlay instead of a connection error.
-- `Info.plist` sets `NSAllowsLocalNetworking` so plain HTTP to localhost is allowed.
+- The app uses the production fplAPI at `https://fpl-api-six.vercel.app/api` (`FPLAPIClient.baseURL`), deployed on Vercel with the same responses as local. The first request after a few idle minutes can take 1–2 seconds while Vercel starts an instance.
+- To work against a local backend, set `baseURL` to `http://127.0.0.1:5000/api` and run it with `uvicorn main:app --reload --port=5000` (its docs say `fastapi dev main.py`, which uses port 8000). `127.0.0.1` only works in the simulator; a physical device needs the Mac's LAN IP and `--host 0.0.0.0`. macOS AirPlay Receiver also listens on port 5000, so with the backend stopped requests get a 403 instead of a connection error.
+- `Info.plist` sets `NSAllowsLocalNetworking` so plain HTTP to a local backend is allowed. Production is HTTPS and doesn't need it.
 
 Endpoints the app uses:
 
