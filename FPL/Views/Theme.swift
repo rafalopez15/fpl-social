@@ -27,6 +27,18 @@ enum Theme {
     /// Players ruled out (0% chance). 6.8:1 on background, 6.1:1 on surface.
     static let danger = Color(hex: 0xF87171)
 
+    /// Chip colors for FPL's 1–5 fixture difficulty, green (easy) to dark red (hard),
+    /// following FPL's own scale. Each pairing passes 4.5:1.
+    static func difficultyColors(_ difficulty: Int) -> (background: Color, foreground: Color) {
+        switch difficulty {
+        case ...1: (Color(hex: 0x15803D), text)
+        case 2: (accent, onAccent)
+        case 3: (Color(hex: 0xCBD5E1), onAccent)
+        case 4: (danger, onAccent)
+        default: (Color(hex: 0xB91C1C), text)
+        }
+    }
+
     static func color(for flag: Element.AvailabilityFlag) -> Color {
         switch flag {
         case .doubtful: warning
