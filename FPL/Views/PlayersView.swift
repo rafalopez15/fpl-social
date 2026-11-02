@@ -111,6 +111,11 @@ private struct ElementRow: View {
     /// All teams, for opponent names in the popover.
     let teams: [Int: Team]
     @State private var showingStats = false
+    /// Passed into the popover explicitly: its content doesn't reliably inherit
+    /// the model container, so its transfer-note @Query came back empty.
+    @Environment(\.modelContext) private var modelContext
+    /// For the popover's transfer section.
+    @EnvironmentObject private var linkedTeam: LinkedTeamStore
     /// Set by the popover's note button; the editor opens once the popover has closed.
     @State private var noteRequested = false
     @State private var showingNoteEditor = false
@@ -138,10 +143,12 @@ private struct ElementRow: View {
                                 ? "Stats for \(element.webName)"
                                 : "Stats and news for \(element.webName)")
             .popover(isPresented: $showingStats, arrowEdge: .leading) {
-                ElementStatsView(element: element, team: team, fixtures: fixtures, teams: teams) {
+                ElementStatsView(element: element, team: team, fixtures: fixtures, teams: teams,
+                                 transfers: linkedTeam.transferHistory) {
                     noteRequested = true
                     showingStats = false
                 }
+                    .modelContext(modelContext)
                     .presentationBackground(Theme.surface)
                     // Show as a popover bubble on iPhone instead of a full sheet.
                     .presentationCompactAdaptation(.popover)
@@ -193,4 +200,6 @@ private struct ElementRow: View {
 
 #Preview {
     PlayersView()
+        .environmentObject(LinkedTeamStore())
+        .modelContainer(for: Note.self, inMemory: true)
 }

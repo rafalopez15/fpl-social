@@ -44,6 +44,7 @@ struct ContentView: View {
     @StateObject private var gameweeks = GameweekStore()
     /// The FPL team linked on this device (Profile tab), shared for transfer notes.
     @StateObject private var linkedTeam = LinkedTeamStore()
+    @Environment(\.scenePhase) private var scenePhase
     /// Measured tab bar height, passed to screens so lists scroll clear of it.
     @State private var tabBarHeight: CGFloat = 0
 
@@ -62,6 +63,20 @@ struct ContentView: View {
         .background(Theme.background.ignoresSafeArea())
         .environmentObject(gameweeks)
         .environmentObject(linkedTeam)
+        // Transfer notes (FPL-12): FPL doesn't push transfers, so look for new
+        // ones on launch, when a team is linked, and on returning to the app.
+        .task(id: linkedTeam.linked?.id) { await linkedTeam.checkForTransfers() }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active { Task { await linkedTeam.checkForTransfers() } }
+        }
+        .sheet(isPresented: Binding(
+            get: { !linkedTeam.pendingTransfers.isEmpty },
+            set: { _ in }
+        )) {
+            TransferPromptView(transfers: linkedTeam.pendingTransfers) {
+                linkedTeam.finishPrompt()
+            }
+        }
         .task { await gameweeks.loadIfNeeded() }
         // Notes live on the device.
         .modelContainer(for: Note.self)

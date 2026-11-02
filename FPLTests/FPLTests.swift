@@ -404,10 +404,10 @@ struct NoteTests {
     }
 
     @Test func notesFromPastGameweeksAreLocked() {
-        #expect(Note(text: "", gameweek: 8).isLocked(currentGameweek: 9))
-        #expect(!Note(text: "", gameweek: 9).isLocked(currentGameweek: 9))
-        #expect(!Note(text: "", gameweek: nil).isLocked(currentGameweek: 9))
-        #expect(!Note(text: "", gameweek: 8).isLocked(currentGameweek: nil))
+        #expect(Note(text: "Hold", gameweek: 8).isLocked(currentGameweek: 9))
+        #expect(!Note(text: "Hold", gameweek: 9).isLocked(currentGameweek: 9))
+        #expect(!Note(text: "Hold", gameweek: nil).isLocked(currentGameweek: 9))
+        #expect(!Note(text: "Hold", gameweek: 8).isLocked(currentGameweek: nil))
     }
 
     @Test func undoRestoresTheDeletedNote() {
@@ -497,5 +497,174 @@ struct ManagerTests {
 
         relaunched.unlink()
         #expect(LinkedTeamStore(defaults: defaults).linked == nil)
+    }
+}
+
+struct TransferTests {
+
+    @Test func decodesTransfersWithFractionalSeconds() throws {
+        let json = """
+        [{"element_in": 566, "element_out": 114, "event": 9, "time": "2026-10-31T10:08:30.794468Z",
+          "element_in_cost": 50, "element_out_cost": 45},
+         {"element_in": 40, "element_out": 565, "event": 9, "time": "2026-10-28T23:05:21Z",
+          "element_in_cost": null}]
+        """
+        let transfers = try JSONDecoder.fplAPI.decode([Transfer].self, from: Data(json.utf8))
+        #expect(transfers.count == 2)
+        #expect(transfers[0].elementIn == 566)
+        #expect(transfers[0].elementInCost == 50)
+        #expect(transfers[1].elementInCost == nil)
+        #expect(transfers[1].elementOutCost == nil)
+        #expect(transfers[0].time > transfers[1].time)
+    }
+
+    static func transfer(_ elementIn: Int, _ elementOut: Int, day: Int, event: Int = 10) -> Transfer {
+        Transfer(elementIn: elementIn, elementOut: elementOut, event: event,
+                 time: NoteTests.date(day), elementInCost: 86, elementOutCost: 80)
+    }
+
+    static func noteTransfer(_ elementIn: Int, _ elementOut: Int, day: Int) -> NoteTransfer {
+        NoteTransfer(playerIn: NotePlayer(id: elementIn, webName: "In\(elementIn)"),
+                     playerOut: NotePlayer(id: elementOut, webName: "Out\(elementOut)"),
+                     cost: 86, time: NoteTests.date(day))
+    }
+
+    @Test func onlyTransfersAfterTheLastCheckAreNewOldestFirst() {
+        let transfers = [Self.transfer(3, 4, day: 9), Self.transfer(1, 2, day: 7), Self.transfer(5, 6, day: 3)]
+        let new = Transfer.made(after: NoteTests.date(5), in: transfers)
+        #expect(new.map(\.elementIn) == [1, 3])
+    }
+
+    @Test func profileGroupsTransfersByGameweekLatestFirst() {
+        let transfers = [Self.transfer(1, 2, day: 2, event: 9), Self.transfer(3, 4, day: 9, event: 10),
+                         Self.transfer(5, 6, day: 4, event: 9)]
+            .map { NamedTransfer($0, names: [1: "Isak"]) }
+        let groups = NamedTransfer.byGameweek(transfers)
+        #expect(groups.map(\.gameweek) == [10, 9])
+        #expect(groups[1].transfers.map(\.transfer.elementIn) == [5, 1])
+        #expect(groups[1].transfers[1].noteTransfer.playerIn.webName == "Isak")
+        #expect(groups[1].transfers[1].noteTransfer.playerOut.webName == "Unknown player")
+    }
+
+    static func history(_ transfers: [Int], startingAt first: Int = 1, chips: [(String, Int)] = []) -> ManagerHistory {
+        ManagerHistory(
+            current: transfers.enumerated().map { GameweekHistory(event: first + $0.offset, eventTransfers: $0.element) },
+            chips: chips.map { ChipUsed(name: $0.0, event: $0.1) })
+    }
+
+    @Test func freeTransfersMatchManagerOnesSeason() {
+        // Manager 1 to GW9: Wildcard in GW3, Free Hit in GW5, 1, 2 and 3 transfers in GW6, 8 and 9, no hits.
+        let history = Self.history([0, 0, 0, 0, 0, 1, 0, 2, 3], chips: [("bboost", 2), ("wildcard", 3), ("freehit", 5)])
+        #expect(FreeTransfers.available(history: history, upcoming: []) == 1)
+    }
+
+    @Test func wildcardAndFreeHitKeepSavedTransfersWithoutAddingOne() {
+        // 2 saved going into GW3, Wildcard in GW3, so still 2 for GW4.
+        #expect(FreeTransfers.available(history: Self.history([0, 0, 0], chips: [("wildcard", 3)]), upcoming: []) == 2)
+        #expect(FreeTransfers.available(history: Self.history([0, 0, 0], chips: [("bboost", 3)]), upcoming: []) == 3)
+    }
+
+    @Test func freeTransfersCapAtFiveAndNeverGoBelowZero() {
+        #expect(FreeTransfers.available(history: Self.history(Array(repeating: 0, count: 9)), upcoming: []) == 5)
+        // A hit in GW2 (3 transfers on 1) leaves 1 for GW3, not -1.
+        #expect(FreeTransfers.available(history: Self.history([0, 3]), upcoming: []) == 1)
+        // Joining in GW5: unlimited that week, then 1 for GW6.
+        #expect(FreeTransfers.available(history: Self.history([15], startingAt: 5), upcoming: []) == 1)
+        #expect(FreeTransfers.available(history: Self.history([]), upcoming: []) == nil)
+    }
+
+    @Test func transfersForTheNextGameweekUseFreeOnes() {
+        let history = Self.history([0, 0, 0])  // 3 free for GW4
+        let upcoming = [Self.transfer(1, 2, day: 2, event: 4), Self.transfer(3, 4, day: 1, event: 3)]
+        #expect(FreeTransfers.available(history: history, upcoming: upcoming) == 2)
+        let wildcard = Self.history([0, 0, 0], chips: [("wildcard", 4)])
+        #expect(FreeTransfers.available(history: wildcard, upcoming: upcoming) == 3)
+    }
+
+    @Test func transfersKeepTheSellingPriceAndOldNotesStillLoad() throws {
+        let named = NamedTransfer(Self.transfer(1, 2, day: 1), names: [:])
+        #expect(named.noteTransfer.outCost == 80)
+        // Saved before outCost existed.
+        let old = #"{"playerIn":{"id":1,"webName":"Isak"},"playerOut":{"id":2,"webName":"Watkins"},"cost":86,"time":0}"#
+        let decoded = try JSONDecoder().decode(NoteTransfer.self, from: Data(old.utf8))
+        #expect(decoded.cost == 86)
+        #expect(decoded.outCost == nil)
+    }
+
+    @Test func popoverUsesTheSeasonsTransfersWithTheNoteWhenThereIsOne() throws {
+        let history = [Self.transfer(7, 2, day: 1, event: 8), Self.transfer(9, 7, day: 5, event: 11),
+                       Self.transfer(3, 4, day: 6, event: 11)]
+            .map { NamedTransfer($0, names: [9: "Isak"]) }
+        let sale = Note(text: "Injured", gameweek: 11, transfer: history[1].noteTransfer)
+
+        let sold = try #require(Note.latestTransfer(for: 7, history: history, notes: [sale]))
+        #expect(!sold.broughtIn)
+        #expect(sold.gameweek == 11)
+        #expect(sold.transfer.playerIn.webName == "Isak")
+        #expect(sold.note?.text == "Injured")
+
+        // Bought before linking: shown, but with no note.
+        let bought = try #require(Note.latestTransfer(for: 3, history: history, notes: [sale]))
+        #expect(bought.broughtIn)
+        #expect(bought.note == nil)
+
+        #expect(Note.latestTransfer(for: 42, history: history, notes: [sale]) == nil)
+        // Not loaded yet: falls back to the notes.
+        #expect(Note.latestTransfer(for: 7, history: nil, notes: [sale])?.note?.text == "Injured")
+    }
+
+    @Test func transfersFindTheirOwnNote() {
+        let transfer = Self.transfer(1, 2, day: 3)
+        let sameDayOtherPlayer = Self.transfer(5, 6, day: 3)
+        let note = Note(text: "Fixtures", gameweek: 10, transfer: NamedTransfer(transfer, names: [:]).noteTransfer)
+        let plain = Note(text: "Captain?", gameweek: 10, players: [NotePlayer(id: 1, webName: "In1")])
+        #expect(Note.forTransfer(transfer, in: [plain, note]) === note)
+        #expect(Note.forTransfer(sameDayOtherPlayer, in: [plain, note]) == nil)
+    }
+
+    @Test func summaryNamesBothPlayersAndThePrice() {
+        #expect(Self.noteTransfer(1, 2, day: 1).summary == "In1 in · Out2 out · £8.6m")
+    }
+
+    @Test func popoverUsesTheLatestTransferForThePlayer() throws {
+        let bought = Note(text: "Great fixtures", gameweek: 8, transfer: Self.noteTransfer(7, 2, day: 1))
+        let sold = Note(text: "Injured", gameweek: 11, transfer: Self.noteTransfer(9, 7, day: 5))
+        let free = Note(text: "Watch him", gameweek: 9, players: [NotePlayer(id: 7, webName: "In7")])
+
+        let latest = try #require(Note.latestTransferNote(for: 7, in: [bought, sold, free]))
+        #expect(latest.note.text == "Injured")
+        #expect(!latest.broughtIn)
+
+        let onlyBought = try #require(Note.latestTransferNote(for: 7, in: [bought, free]))
+        #expect(onlyBought.broughtIn)
+
+        // Never transferred (a free note alone doesn't count).
+        #expect(Note.latestTransferNote(for: 7, in: [free]) == nil)
+    }
+
+    @Test func skippedTransferNotesCanStillBeWrittenOnce() {
+        let skipped = Note(text: "", gameweek: 8, transfer: Self.noteTransfer(1, 2, day: 1))
+        #expect(!skipped.isLocked(currentGameweek: 9))
+        skipped.text = "Fixtures"
+        #expect(skipped.isLocked(currentGameweek: 9))
+    }
+
+    @Test func undoKeepsTheTransfer() {
+        let note = Note(text: "Fixtures", gameweek: 10, transfer: Self.noteTransfer(1, 2, day: 1))
+        #expect(DeletedNote(note).restored().transfer == note.transfer)
+    }
+
+    @MainActor @Test func linkingStartsWatchingFromNow() throws {
+        let suite = "FPLTests.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        let before = Date.now
+        LinkedTeamStore(defaults: defaults).link(try ManagerTests.manager())
+        let seen = try #require(defaults.object(forKey: "transfersSeenUntil") as? Date)
+        #expect(seen >= before)
+
+        LinkedTeamStore(defaults: defaults).unlink()
+        #expect(defaults.object(forKey: "transfersSeenUntil") == nil)
     }
 }

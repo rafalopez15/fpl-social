@@ -239,15 +239,25 @@ private struct GameweekHeader: View {
     }
 }
 
-/// A note in the list: up to three lines of text, then linked players and the date.
+/// A note in the list: for a transfer note, the transfer first; then up to three
+/// lines of text (or a prompt to write it, if skipped), then players and the date.
 private struct NoteRow: View {
     let note: Note
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(note.text)
-                .lineLimit(3)
-                .multilineTextAlignment(.leading)
+        VStack(alignment: .leading, spacing: 6) {
+            if let transfer = note.transfer {
+                TransferLine(transfer: transfer)
+            }
+            if note.text.isEmpty, let transfer = note.transfer {
+                Text("Why did you bring in \(transfer.playerIn.webName)? Tap to write it.")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            } else {
+                Text(note.text)
+                    .lineLimit(3)
+                    .multilineTextAlignment(.leading)
+            }
             Text(detail)
                 .font(.caption)
                 .foregroundStyle(.secondary)
@@ -257,9 +267,10 @@ private struct NoteRow: View {
         .contentShape(Rectangle())
     }
 
-    /// e.g. "Isak, Salah · 2 Nov"
+    /// e.g. "Isak, Salah · 2 Nov". Transfer notes show only the date; the transfer names the players.
     private var detail: String {
         let day = note.createdAt.formatted(.dateTime.day().month())
+        guard note.transfer == nil else { return day }
         let names = note.players.map(\.webName).joined(separator: ", ")
         return names.isEmpty ? day : "\(names) · \(day)"
     }
