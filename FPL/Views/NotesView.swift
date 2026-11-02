@@ -65,8 +65,10 @@ struct NotesView: View {
                     }
                 }
             }
+            // No title bar: the tab bar already says this is Notes, so the list
+            // starts at the top. The title stays for accessibility and future pushes.
             .navigationTitle("Notes")
-            .navigationBarTitleDisplayMode(.inline)
+            .toolbar(.hidden, for: .navigationBar)
             .sheet(item: $editor) { target in
                 NoteEditorView(note: target.note, gameweek: target.gameweek)
             }
@@ -115,6 +117,8 @@ struct NotesView: View {
             }
         }
         .listSectionSpacing(12)
+        // The grouped style's default top inset leaves a large empty band.
+        .contentMargins(.top, 8, for: .scrollContent)
         .listStyle(.insetGrouped)
     }
 }
