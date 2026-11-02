@@ -464,6 +464,24 @@ struct ManagerTests {
         #expect(manager.managerName == "Ana")
     }
 
+    @Test(arguments: [
+        ("1234567", "1234567"),
+        ("12a3 4", "1234"),
+        ("fantasy.premierleague.com/entry/1234567/event/9", "12345679"),
+        ("123456789012", "1234567890"),
+    ])
+    func idFieldKeepsDigitsOnly(input: String, expected: String) {
+        #expect(LinkTeamModel.digits(in: input) == expected)
+    }
+
+    @Test func lookupErrorsMapToMessages() {
+        #expect(LinkError(FPLAPIClient.APIError.notFound("Manager not found")) == .notFound)
+        #expect(LinkError(FPLAPIClient.APIError.dataUnavailable("FPL is unavailable right now")) == .fplUnavailable)
+        #expect(LinkError(URLError(.notConnectedToInternet)) == .other)
+        #expect(!LinkError.notFound.canRetry)
+        #expect(LinkError.fplUnavailable.canRetry)
+    }
+
     @MainActor @Test func linkSurvivesARestartAndUnlinks() throws {
         let suite = "FPLTests.\(UUID().uuidString)"
         let defaults = try #require(UserDefaults(suiteName: suite))
