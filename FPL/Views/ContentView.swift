@@ -5,6 +5,7 @@
 //  Created by Rafael Lopez on 11/4/24.
 //
 
+import SwiftData
 import SwiftUI
 
 /// The app's top-level tabs. Each tab owns its own NavigationStack.
@@ -39,6 +40,10 @@ enum AppTab: CaseIterable, Identifiable {
 /// and loaded data, and the switch itself is instant.
 struct ContentView: View {
     @State private var selection: AppTab = .feed
+    /// Shared so a note written from any tab is tagged with the current gameweek.
+    @StateObject private var gameweeks = GameweekStore()
+    /// Measured tab bar height, passed to screens so lists scroll clear of it.
+    @State private var tabBarHeight: CGFloat = 0
 
     var body: some View {
         ZStack {
@@ -50,8 +55,13 @@ struct ContentView: View {
                     .accessibilityHidden(!isSelected)
             }
         }
-        .modifier(TabBarPlacement(selection: $selection))
+        .environment(\.tabBarClearance, tabBarHeight)
+        .modifier(TabBarPlacement(selection: $selection, height: $tabBarHeight))
         .background(Theme.background.ignoresSafeArea())
+        .environmentObject(gameweeks)
+        .task { await gameweeks.loadIfNeeded() }
+        // Notes live on the device.
+        .modelContainer(for: Note.self)
     }
 
     @ViewBuilder
@@ -110,14 +120,19 @@ private struct FloodlightsTabBar: View {
 /// (The system effect from `safeAreaBar` didn't reach the tabs' lists.)
 private struct TabBarPlacement: ViewModifier {
     @Binding var selection: AppTab
+    /// Set to the bar's height, including the fade above it.
+    @Binding var height: CGFloat
 
     func body(content: Content) -> some View {
         content.safeAreaInset(edge: .bottom, spacing: 0) {
             FloodlightsTabBar(selection: $selection)
-                .background(alignment: .bottom) {
+                // Start the fade 16pt above the bar so rows soften before they
+                // reach it. The space counts toward the height, so a list's last
+                // row scrolls fully clear of the fade.
+                .padding(.top, 16)
+                .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height = $0 }
+                .background {
                     SoftEdge()
-                        // Start the fade above the bar so rows soften before they reach it.
-                        .padding(.top, -16)
                         .ignoresSafeArea(edges: .bottom)
                 }
         }

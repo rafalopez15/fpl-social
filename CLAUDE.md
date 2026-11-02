@@ -6,7 +6,7 @@ Guidance for Claude Code when working in this repo.
 
 FPL is a SwiftUI iOS app for browsing Fantasy Premier League players. It doesn't call FPL directly. It talks to **fplAPI**, a separate FastAPI backend (its own repo) that wraps the FPL API and serves cleaned-up JSON under `/api`. FPL calls players "elements", and the code keeps that name.
 
-Current features: a tab bar (Feed, Players, Notes, Profile), and on the Players tab a player list per position, sorting, search, a stats popover per player, and team short names. Feed, Notes and Profile are placeholders; the backlog for them lives in Linear (team FPL Social, projects Transfer Notes and FPL Social).
+Current features: a tab bar (Feed, Players, Notes, Profile), and on the Players tab a player list per position, sorting, search, a stats popover per player, and team short names. Notes lets you write notes tagged with the gameweek (stored on the device). Feed and Profile are placeholders; the backlog for them lives in Linear (team FPL Social, projects Transfer Notes and FPL Social).
 
 ## Build and test
 
@@ -59,16 +59,19 @@ FPL/
     ElementSort.swift           ElementSort (points, price, goals, assists, selected by)
     Team.swift                  Team id, name, short name
     Fixture.swift               Fixture, Event, FixtureSchedule (a team's next gameweeks)
+    Note.swift                  SwiftData Note, NotePlayer, NoteSection (grouping by gameweek)
   Networking/
     FPLAPIClient.swift          async/await client, maps HTTP errors to APIError
   ViewModel/
     ElementViewModel.swift      @MainActor ObservableObject: loading, search, sort, teams
+    GameweekStore.swift         Gameweeks and the current one, shared via environment (note tags, deadlines)
   Views/
     ContentView.swift           Root: AppTab enum, the four tabs in a ZStack, FloodlightsTabBar (opens on Feed)
     Theme.swift                 Floodlights colors, Color(hex:), themedScreen() and themedRow() modifiers
     PlayersView.swift           Players tab: list, title menu, toolbar, ElementRow
     FeedView.swift              Feed tab (placeholder, FPL-15)
-    NotesView.swift             Notes tab (placeholder, FPL-14)
+    NotesView.swift             Notes tab: every gameweek so far with a + to add, edit, swipe to delete
+    NoteEditorView.swift        Sheet to write or edit a note, with linked player chips
     ProfileView.swift           Profile tab (placeholder, FPL-9 / FPL-11)
     ElementStatsView.swift      Stats popover content
 FPLTests/FPLTests.swift         Swift Testing: decoding and sort tests
@@ -89,6 +92,17 @@ These come from the fplAPI contract. Keep them when touching `Element`:
 - `canSelect`, `canTransact` and `removed` (`can_select`, `can_transact`, `removed`) are optional booleans. Use `isSelectable` to decide whether to show a player: it's false only when `canSelect` is false or `removed` is true. Status `u` alone doesn't hide anyone.
 - `photo` is a filename only. The API doesn't build image URLs yet.
 
+## Notes
+
+Notes (FPL-10) are personal and stored on the device with SwiftData. `ContentView` sets `.modelContainer(for: Note.self)` and shares a `GameweekStore` as an environment object; previews need both (`inMemory: true`). Moving notes to the backend waits for accounts (FPL-11).
+
+- The Notes tab lists every gameweek from the current one (`GameweekStore.current`: `is_current`, or `is_next` before the season) back to 1, newest first. Each gameweek is one card: a list section whose first row is the header (`GameweekHeader`), so swipe to delete, undo and VoiceOver work as in any list. The header shows the title, a green "This week" tag on the current gameweek or a lock on past ones, then "Deadline Sat, Oct 31 · 2 notes" (deadlines from `GameweekStore.events`), and a green `+` (44pt target, labelled "Add note to Gameweek N") that opens the editor for that gameweek. Empty gameweeks are a compact card with a muted title, so gameweeks with notes stand out when scanning. Cards are 12pt apart (`listSectionSpacing`). The Notes tab hides its navigation bar (`.toolbar(.hidden, for: .navigationBar)`) so the list starts at the top: the tab bar already says where you are, and iOS still blurs rows scrolling under the status bar. The title is kept for accessibility. This card layout was picked over a timeline with a vertical line because it keeps the native list (swipe to delete) and has room for the points and transfer notes FPL-14 and FPL-12 add. The `+` replaced a toolbar compose button and a gameweek menu in the editor, which the user found unintuitive. Until the first note, a hint row at the top says "Tap + on a gameweek…". Notes saved while gameweeks couldn't load go under "No gameweek" at the bottom, with no `+`.
+- The list is built from gameweeks, so with no gameweeks and no notes it shows a spinner, then "Couldn't load gameweeks" with Retry (`GameweekStore.didFail`). Storing gameweeks with the user (once accounts exist) may remove this; for now it relies on the API.
+- **Notes from past gameweeks are read-only** (`Note.isLocked`): they open with the text, chips without ×, a lock line and only a Done button, so your reasoning at the time can't be rewritten. That includes a note just added to an earlier gameweek; the editor warns "can't be edited after saving" before you save one. Notes from the current gameweek, with no gameweek, or while the current gameweek is unknown stay editable. Swipe to delete works on every note, past ones included, since it's the only fix for a mistake in a locked note. Deleting shows a "Note deleted · Undo" toast above the tab bar for 5 seconds (and a VoiceOver announcement); Undo re-inserts a copy (`DeletedNote`) with the same gameweek, dates, text and players. The user preferred undo over a confirmation alert.
+- Linked players are stored as `NotePlayer` (id plus `webName`), so notes show names without loading the player list.
+- Notes are written from a gameweek's `+` on the Notes tab, or from the stats popover's `square.and.pencil` button, which writes one for the current gameweek and links that player. The popover closes first and the editor sheet opens from the row in `onChange(of: showingStats)`, because a sheet can't present while the popover is up.
+- There's no player picker in the editor yet; players can only be linked from the popover, and unlinked with the chip's ×.
+
 ## Loading state
 
 `fetchElements()` numbers each request (`fetchGeneration`) and only the newest one writes state. Its `defer` always clears `isLoading` for the newest request, including on cancellation. Don't go back to checking `Task.isCancelled` and returning early: pull-to-refresh used to swap the list for the full-screen spinner, which cancelled the refresh and left the spinner running forever.
@@ -104,7 +118,7 @@ The app uses the **Floodlights** theme (picked from three directions suggested b
 - **Fonts** stay SF Pro with Dynamic Type text styles. Don't add custom fonts.
 
 - **Navigation title** is inline and doubles as the position menu (`.toolbarTitleMenu`). With a large title, iOS only shows the menu after scrolling.
-- **Tab bar** is custom (`FloodlightsTabBar`), not the iOS 26 system one: the user found its glass selection animation too busy. A rounded bar with a solid green pill behind the selected tab. It sits on a soft edge (`SoftEdge`): a blur and navy gradient that start 16pt above the bar, so rows fade into navy as they pass under it, matching the scroll edge effect under the search bar. `safeAreaBar` was tried for the system effect but didn't reach the tabs' lists. The bar card is Liquid Glass (`.glassEffect`) on iOS 26 and solid navy with a border on iOS 18; switching is instant with a selection haptic. Tabs live in a `ZStack` (unselected ones hidden with opacity, hit testing and accessibility off) so each keeps its state, and the bar is a `.safeAreaInset(edge: .bottom)` so lists scroll clear of it. It carries `.isTabBar` and `.isSelected` traits for VoiceOver. Feed, Players, Notes, Profile, each with an SF Symbol and a label; keep it at five tabs or fewer and put secondary screens inside a tab's stack. Unbuilt tabs show a `ContentUnavailableView` describing what will appear there.
+- **Tab bar** is custom (`FloodlightsTabBar`), not the iOS 26 system one: the user found its glass selection animation too busy. A rounded bar with a solid green pill behind the selected tab. It sits on a soft edge (`SoftEdge`): a blur and navy gradient that start 16pt above the bar (counted in the bar's height, so lists' last rows scroll fully clear of it), so rows fade into navy as they pass under it, matching the scroll edge effect under the search bar. `safeAreaBar` was tried for the system effect but didn't reach the tabs' lists. The bar card is Liquid Glass (`.glassEffect`) on iOS 26 and solid navy with a border on iOS 18; switching is instant with a selection haptic. Tabs live in a `ZStack` (unselected ones hidden with opacity, hit testing and accessibility off) so each keeps its state, and the bar is a `.safeAreaInset(edge: .bottom)` so lists scroll clear of it. It carries `.isTabBar` and `.isSelected` traits for VoiceOver. The bar's `safeAreaInset` doesn't reach lists inside each tab's `NavigationStack` (their safe area reads 0 there), so `ContentView` measures the bar and passes its height as the `tabBarClearance` environment value; `themedScreen()` adds it as a bottom content margin. Any new screen must use `themedScreen()` or its last rows will sit under the bar. Feed, Players, Notes, Profile, each with an SF Symbol and a label; keep it at five tabs or fewer and put secondary screens inside a tab's stack. Unbuilt tabs show a `ContentUnavailableView` describing what will appear there.
 - **Search and sort** on the Players tab sit at the top, because the tab bar owns the bottom: `.searchable` with `.navigationBarDrawer(displayMode: .always)`, and two buttons top right. The first is a `Menu` with an inline `Picker` listing the sort fields (checkmark on the current one); the second (`arrow.up.arrow.down`) flips high-to-low and low-to-high. There is no filter sheet.
 - **Rows**, left to right: an `info.circle` button, `webName` with the team short name in grey caption text, then price (secondary) and the sort stat (semibold) as fixed-width trailing columns so numbers line up. Rows are one line: news is not shown in the row.
 - **Flagged players** (`element.availabilityFlag`) get a colored name and an `exclamationmark.triangle.fill` icon just before it (between the info button and the name), labelled with `availabilityDescription` for VoiceOver. **Yellow** (`Theme.warning`, `.doubtful`): a 1–99% chance of playing next round (FPL uses 25/50/75). **Red** (`Theme.danger` #F87171, `.out`): a 0% chance, which covers injuries with or without a return date and suspensions; news containing "Unknown return date" is always red. With no chance from FPL it falls back to status (`d` yellow; `i`, `s`, `u`, `n` red). The user asked for a "hazard emoji"; the SF Symbol was used instead so it takes the theme color.
@@ -116,6 +130,26 @@ The app uses the **Floodlights** theme (picked from three directions suggested b
 - The row's info button uses `.buttonStyle(.borderless)` so tapping the row doesn't open the popover.
 
 The user prefers fewer controls: a minimum-stats section, a player count, and then the whole filter sheet with its max price slider were removed on request. Ask before adding controls.
+
+## Pull requests and commits
+
+Shared with the fplAPI repo.
+
+**PR title:** `FPL-<n>: <what the PR does>`, imperative and specific, e.g. `FPL-26: Fixtures endpoint with difficulty ratings`. The issue id links the PR to Linear.
+
+**PR description:**
+
+1. First line: `Closes FPL-<n>.` if the PR finishes the ticket, or `Part of FPL-<n>.` if the ticket has work left (e.g. a backend half). "Closes" makes Linear mark the ticket Done on merge.
+2. One or two sentences on what the PR does for the user or app, not how.
+3. `## Changes`: short bullets, one per real change, each giving the specific behavior and the reason, and naming the files, fields or screens involved. No bullet should fit an unrelated PR unchanged.
+4. `## Testing`: what was checked and how (tests, simulator or device runs, which screens and cases). Say plainly what wasn't checked yet.
+5. Extra sections only when needed: `## Breaking change`, `## Before merging`, `## After merging`.
+
+**Style:** plain, direct sentences. No emoji in headings, no bold for emphasis, no em dashes. No filler or hype ("robust", "seamless", "leverage", "streamline", "This PR introduces..."). Concrete facts over adjectives: numbers, field names, endpoint paths, before/after behavior. No closing summary paragraph. No AI attribution anywhere, in PRs or commits: no "Generated with Claude Code", no Co-Authored-By lines.
+
+**Commits:** one logical change per commit, each leaving the app working. Short imperative subject, then a body explaining what changed and why.
+
+**Branches and merging:** start each story on a fresh branch from an up-to-date `main`, named with the issue id (Linear's branch name works). Merge PRs with a merge commit, not squash.
 
 ## Conventions
 

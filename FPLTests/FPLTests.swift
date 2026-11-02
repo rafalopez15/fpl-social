@@ -361,3 +361,71 @@ struct FixtureScheduleTests {
         #expect(FixtureSchedule(fixtures: [Self.fixture(1, gw: 38, home: 1, away: 2)], events: seasonOver) == nil)
     }
 }
+
+struct NoteTests {
+
+    static func date(_ day: Int) -> Date {
+        Date(timeIntervalSince1970: TimeInterval(day) * 86_400)
+    }
+
+    @Test func sectionsAreNewestGameweekFirstWithUntaggedLast() {
+        let notes = [
+            Note(text: "a", gameweek: 9, createdAt: Self.date(1)),
+            Note(text: "b", gameweek: nil, createdAt: Self.date(2)),
+            Note(text: "c", gameweek: 10, createdAt: Self.date(3)),
+            Note(text: "d", gameweek: 10, createdAt: Self.date(4)),
+        ]
+        let sections = NoteSection.sections(for: notes)
+        #expect(sections.map(\.gameweek) == [10, 9, nil])
+        #expect(sections.map(\.title) == ["Gameweek 10", "Gameweek 9", "No gameweek"])
+        // Newest note first within a gameweek.
+        #expect(sections[0].notes.map(\.text) == ["d", "c"])
+    }
+
+    @Test func everyGameweekUpToTheCurrentOneGetsASection() {
+        let notes = [
+            Note(text: "a", gameweek: 2, createdAt: Self.date(1)),
+            Note(text: "b", gameweek: nil, createdAt: Self.date(2)),
+        ]
+        let sections = NoteSection.sections(for: notes, currentGameweek: 4)
+        #expect(sections.map(\.gameweek) == [4, 3, 2, 1, nil])
+        #expect(sections.map(\.notes.count) == [0, 0, 1, 0, 1])
+    }
+
+    @Test func currentGameweekPrefersInProgressThenNext() {
+        let midSeason = FixtureScheduleTests.events(next: 10)
+        #expect(Event.currentGameweek(in: midSeason) == 9)
+
+        let preSeason = (1...38).map {
+            Event(id: $0, name: "", deadlineTime: .now, finished: false, isCurrent: false, isNext: $0 == 1)
+        }
+        #expect(Event.currentGameweek(in: preSeason) == 1)
+        #expect(Event.currentGameweek(in: []) == nil)
+    }
+
+    @Test func notesFromPastGameweeksAreLocked() {
+        #expect(Note(text: "", gameweek: 8).isLocked(currentGameweek: 9))
+        #expect(!Note(text: "", gameweek: 9).isLocked(currentGameweek: 9))
+        #expect(!Note(text: "", gameweek: nil).isLocked(currentGameweek: 9))
+        #expect(!Note(text: "", gameweek: 8).isLocked(currentGameweek: nil))
+    }
+
+    @Test func undoRestoresTheDeletedNote() {
+        let note = Note(text: "Holding Salah", gameweek: 7,
+                        players: [NotePlayer(id: 2, webName: "M.Salah")], createdAt: Self.date(5))
+        note.updatedAt = Self.date(6)
+
+        let restored = DeletedNote(note).restored()
+        #expect(restored.text == "Holding Salah")
+        #expect(restored.gameweek == 7)
+        #expect(restored.players == note.players)
+        #expect(restored.createdAt == Self.date(5))
+        #expect(restored.updatedAt == Self.date(6))
+    }
+
+    @Test func linkedPlayersAreKept() {
+        let note = Note(text: "Watch his minutes", gameweek: 10, players: [NotePlayer(id: 7, webName: "Isak")])
+        #expect(note.players.map(\.webName) == ["Isak"])
+        #expect(note.updatedAt == note.createdAt)
+    }
+}

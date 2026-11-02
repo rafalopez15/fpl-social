@@ -47,6 +47,25 @@ enum Theme {
     }
 }
 
+private struct ThemedScreen: ViewModifier {
+    @Environment(\.tabBarClearance) private var tabBarClearance
+
+    func body(content: Content) -> some View {
+        content
+            .scrollContentBackground(.hidden)
+            .contentMargins(.bottom, tabBarClearance, for: .scrollContent)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(Theme.background)
+    }
+}
+
+extension EnvironmentValues {
+    /// Height of the tab bar above the home indicator. The bar's safe area inset
+    /// doesn't reach lists inside each tab's NavigationStack, so themed screens
+    /// add this as a bottom content margin instead.
+    @Entry var tabBarClearance: CGFloat = 0
+}
+
 extension Color {
     init(hex: UInt32) {
         self.init(
@@ -62,11 +81,10 @@ extension View {
     /// Applies the theme to a screen: navy background behind lists and forms.
     /// Text keeps the system `.primary`/`.secondary` styles; overriding them
     /// with `foregroundStyle(_:_:)` turns ContentUnavailableView descriptions white.
+    ///
+    /// Also keeps lists' last rows clear of the tab bar (see `tabBarClearance`).
     func themedScreen() -> some View {
-        self
-            .scrollContentBackground(.hidden)
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(Theme.background)
+        modifier(ThemedScreen())
     }
 
     /// Row styling for lists and forms on a themed screen.

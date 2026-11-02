@@ -15,6 +15,7 @@ The app reads from [fplAPI](#backend), a FastAPI backend that wraps the official
 - **Flagged players.** Doubtful, injured, suspended and unavailable players have a yellow name with a warning triangle in front of it.
 - **Player stats.** The ⓘ button on each row opens a popover with the player's injury or availability news (with when it was last updated), position, team, ownership, fixtures for the next 3 gameweeks with FPL's difficulty ratings, season stats (minutes, goals, assists, clean sheets, bonus, cards and more) and expected stats (xG, xA, xGI, xGC, ICT index).
 - **Team short names** (ARS, MCI, LIV) next to each player.
+- **Notes.** Write notes about who you're watching or holding, from the Notes tab or from a player's stats popover (which links that player). Each note is tagged with the gameweek and stored on your device.
 - Pull to refresh.
 
 ## Design
