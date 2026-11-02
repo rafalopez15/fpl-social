@@ -50,9 +50,7 @@ struct ContentView: View {
                     .accessibilityHidden(!isSelected)
             }
         }
-        .safeAreaInset(edge: .bottom, spacing: 0) {
-            FloodlightsTabBar(selection: $selection)
-        }
+        .modifier(TabBarPlacement(selection: $selection))
         .background(Theme.background.ignoresSafeArea())
     }
 
@@ -67,7 +65,8 @@ struct ContentView: View {
     }
 }
 
-/// Flat tab bar: a navy card with a solid green pill behind the selected tab.
+/// Tab bar: a rounded card with a solid green pill behind the selected tab.
+/// The card is Liquid Glass on iOS 26 and solid navy on earlier versions.
 private struct FloodlightsTabBar: View {
     @Binding var selection: AppTab
 
@@ -97,17 +96,66 @@ private struct FloodlightsTabBar: View {
             }
         }
         .padding(6)
-        .background(Theme.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .strokeBorder(Theme.border)
-        }
+        .modifier(TabBarBackground())
         .padding(.horizontal, 12)
         .padding(.top, 6)
-        .background(Theme.background)
         .sensoryFeedback(.selection, trigger: selection)
         .accessibilityElement(children: .contain)
         .accessibilityAddTraits(.isTabBar)
+    }
+}
+
+/// Pins the tab bar to the bottom on a soft edge: rows fade and blur into navy
+/// as they pass under it, like the scroll edge effect under the search bar.
+/// (The system effect from `safeAreaBar` didn't reach the tabs' lists.)
+private struct TabBarPlacement: ViewModifier {
+    @Binding var selection: AppTab
+
+    func body(content: Content) -> some View {
+        content.safeAreaInset(edge: .bottom, spacing: 0) {
+            FloodlightsTabBar(selection: $selection)
+                .background(alignment: .bottom) {
+                    SoftEdge()
+                        // Start the fade above the bar so rows soften before they reach it.
+                        .padding(.top, -16)
+                        .ignoresSafeArea(edges: .bottom)
+                }
+        }
+    }
+}
+
+/// A blur and navy tint that ramp up from clear at the top to solid at the bottom.
+private struct SoftEdge: View {
+    var body: some View {
+        ZStack {
+            Rectangle()
+                .fill(.ultraThinMaterial)
+                .mask {
+                    LinearGradient(colors: [.clear, .black, .black],
+                                   startPoint: .top, endPoint: .bottom)
+                }
+            LinearGradient(stops: [
+                .init(color: Theme.background.opacity(0), location: 0),
+                .init(color: Theme.background.opacity(0.7), location: 0.45),
+                .init(color: Theme.background.opacity(0.9), location: 1),
+            ], startPoint: .top, endPoint: .bottom)
+        }
+        .allowsHitTesting(false)
+    }
+}
+
+/// Liquid Glass on iOS 26, the flat navy card before that.
+private struct TabBarBackground: ViewModifier {
+    private let shape = RoundedRectangle(cornerRadius: 18, style: .continuous)
+
+    func body(content: Content) -> some View {
+        if #available(iOS 26, *) {
+            content.glassEffect(.regular, in: shape)
+        } else {
+            content
+                .background(Theme.surface, in: shape)
+                .overlay { shape.strokeBorder(Theme.border) }
+        }
     }
 }
 
