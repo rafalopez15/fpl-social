@@ -134,12 +134,13 @@ struct ElementDecodingTests {
 
 struct ElementAvailabilityTests {
 
-    static func element(status: String, chance: Int?, news: String = "", canSelect: Bool? = nil) throws -> Element {
+    static func element(status: String, chance: Int?, news: String = "", canSelect: Bool? = nil, removed: Bool? = nil) throws -> Element {
         var object = try ElementDecodingTests.fixtureObject()
         object["status"] = status
         object["chance_of_playing_next_round"] = chance ?? NSNull()
         object["news"] = news
         if let canSelect { object["can_select"] = canSelect }
+        if let removed { object["removed"] = removed }
         return try ElementDecodingTests.decode(object)
     }
 
@@ -176,14 +177,30 @@ struct ElementAvailabilityTests {
     }
 
     @Test func playersWhoLeftAreNotSelectable() throws {
-        let left = try Self.element(status: "u", chance: 0, news: "Has joined Al Hilal permanently")
+        let left = try Self.element(status: "u", chance: 0, news: "Has joined Al Hilal permanently", canSelect: false)
         #expect(!left.isSelectable)
-        #expect(try Self.element(status: "i", chance: 0).isSelectable)
+        #expect(try Self.element(status: "i", chance: 0, canSelect: true).isSelectable)
     }
 
-    @Test func canSelectFromTheAPIWins() throws {
-        #expect(!(try Self.element(status: "a", chance: nil, canSelect: false).isSelectable))
+    @Test func statusAloneDoesNotHidePlayers() throws {
+        #expect(try Self.element(status: "u", chance: 0).isSelectable)
         #expect(try Self.element(status: "u", chance: 0, canSelect: true).isSelectable)
+    }
+
+    @Test func removedPlayersAreNotSelectable() throws {
+        #expect(!(try Self.element(status: "a", chance: nil, canSelect: true, removed: true).isSelectable))
+        #expect(try Self.element(status: "a", chance: nil, canSelect: true, removed: false).isSelectable)
+    }
+
+    @Test func decodesTransferFlags() throws {
+        var object = try ElementDecodingTests.fixtureObject()
+        object["can_select"] = true
+        object["can_transact"] = false
+        object["removed"] = false
+        let element = try ElementDecodingTests.decode(object)
+        #expect(element.canSelect == true)
+        #expect(element.canTransact == false)
+        #expect(element.removed == false)
     }
 }
 

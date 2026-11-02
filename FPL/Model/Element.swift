@@ -37,8 +37,12 @@ struct Element: Codable, Identifiable, Hashable {
     let chanceOfPlayingNextRound: Int?
     let chanceOfPlayingThisRound: Int?
     /// FPL's `can_select`: false for players who can't be picked, e.g. they joined
-    /// another club. fplAPI doesn't send it yet, so it's usually nil. See `isSelectable`.
+    /// another club. See `isSelectable`.
     let canSelect: Bool?
+    /// FPL's `can_transact`: whether the player can be transferred in or out.
+    let canTransact: Bool?
+    /// FPL's `removed`: true for players FPL has removed from the game.
+    let removed: Bool?
 
     // Price changes and transfers (costs in tenths of a million)
     let costChangeEvent: Int?
@@ -196,10 +200,10 @@ extension Element {
 
     /// Whether the player can be picked in FPL. Players who left the league
     /// (joined another club, released, not in the squad) can't, and are hidden
-    /// from the list. Uses FPL's `can_select` when fplAPI sends it; until then,
-    /// status `u` matches it exactly.
+    /// from the list. Missing fields count as selectable, so a player is only
+    /// hidden when FPL says so.
     var isSelectable: Bool {
-        canSelect ?? (status != .unavailable)
+        canSelect != false && removed != true
     }
 }
 

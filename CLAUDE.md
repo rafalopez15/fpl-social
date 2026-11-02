@@ -84,7 +84,7 @@ These come from the fplAPI contract. Keep them when touching `Element`:
 - `status` decodes unknown codes to `.unknown` instead of failing.
 - `team` is the team id (1–20). `teamCode` is a different FPL code; don't use it to look up teams.
 - `news` can be `""`. Use `currentNews`, which treats empty as nil.
-- `canSelect` (`can_select`) isn't sent by fplAPI yet; use `isSelectable`, which falls back to status `u`.
+- `canSelect`, `canTransact` and `removed` (`can_select`, `can_transact`, `removed`) are optional booleans. Use `isSelectable` to decide whether to show a player: it's false only when `canSelect` is false or `removed` is true. Status `u` alone doesn't hide anyone.
 - `photo` is a filename only. The API doesn't build image URLs yet.
 
 ## Loading state
@@ -106,7 +106,7 @@ The app uses the **Floodlights** theme (picked from three directions suggested b
 - **Search and sort** on the Players tab sit at the top, because the tab bar owns the bottom: `.searchable` with `.navigationBarDrawer(displayMode: .always)`, and two buttons top right. The first is a `Menu` with an inline `Picker` listing the sort fields (checkmark on the current one); the second (`arrow.up.arrow.down`) flips high-to-low and low-to-high. There is no filter sheet.
 - **Rows**, left to right: an `info.circle` button, `webName` with the team short name in grey caption text, then price (secondary) and the sort stat (semibold) as fixed-width trailing columns so numbers line up. Rows are one line: news is not shown in the row.
 - **Flagged players** (`element.availabilityFlag`) get a colored name and an `exclamationmark.triangle.fill` icon just before it (between the info button and the name), labelled with `availabilityDescription` for VoiceOver. **Yellow** (`Theme.warning`, `.doubtful`): a 1–99% chance of playing next round (FPL uses 25/50/75). **Red** (`Theme.danger` #F87171, `.out`): a 0% chance, which covers injuries with or without a return date and suspensions; news containing "Unknown return date" is always red. With no chance from FPL it falls back to status (`d` yellow; `i`, `s`, `u`, `n` red). The user asked for a "hazard emoji"; the SF Symbol was used instead so it takes the theme color.
-- **Players who left the league are hidden** (`element.isSelectable`): FPL's `can_select` when fplAPI sends it, otherwise status `u`, which matched `can_select == false` exactly in live data (joined another club, released, not in squad). Hide them in the app rather than the API, because transfer notes and the feed will still need to show departed players.
+- **Players who left the league are hidden** (`element.isSelectable`): hidden when FPL's `can_select` is false or `removed` is true (joined another club, released, not in squad). Missing fields mean the player is shown. Hide them in the app rather than the API, because transfer notes and the feed will still need to show departed players.
 - **Right-hand stat follows the sort**: points for points and price, `G` for goals, `A` for assists, a percentage for selected by.
 - **Stats popover** uses `.presentationCompactAdaptation(.popover)` so it stays a bubble on iPhone. It shows full name, position, team, ownership, then a news callout (in the flag's yellow or red with the hazard icon when flagged, grey otherwise; falls back to `availabilityDescription` when a flagged player has no news, and shows "Updated 3 days ago" from `newsAdded`), then Season and Advanced stats in a two-column grid. Missing values show as "–".
 - Changing position keeps the sort field and order.
