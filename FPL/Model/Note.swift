@@ -38,6 +38,31 @@ extension Note {
     }
 }
 
+/// A copy of a deleted note, kept briefly so the delete can be undone.
+struct DeletedNote: Identifiable {
+    let id = UUID()
+    let text: String
+    let gameweek: Int?
+    let players: [NotePlayer]
+    let createdAt: Date
+    let updatedAt: Date
+
+    init(_ note: Note) {
+        text = note.text
+        gameweek = note.gameweek
+        players = note.players
+        createdAt = note.createdAt
+        updatedAt = note.updatedAt
+    }
+
+    /// A new note identical to the deleted one, so it returns to the same place.
+    func restored() -> Note {
+        let note = Note(text: text, gameweek: gameweek, players: players, createdAt: createdAt)
+        note.updatedAt = updatedAt
+        return note
+    }
+}
+
 /// A player linked to a note.
 struct NotePlayer: Codable, Hashable, Identifiable {
     /// `Element.id`

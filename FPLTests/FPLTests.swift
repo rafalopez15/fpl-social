@@ -410,6 +410,19 @@ struct NoteTests {
         #expect(!Note(text: "", gameweek: 8).isLocked(currentGameweek: nil))
     }
 
+    @Test func undoRestoresTheDeletedNote() {
+        let note = Note(text: "Holding Salah", gameweek: 7,
+                        players: [NotePlayer(id: 2, webName: "M.Salah")], createdAt: Self.date(5))
+        note.updatedAt = Self.date(6)
+
+        let restored = DeletedNote(note).restored()
+        #expect(restored.text == "Holding Salah")
+        #expect(restored.gameweek == 7)
+        #expect(restored.players == note.players)
+        #expect(restored.createdAt == Self.date(5))
+        #expect(restored.updatedAt == Self.date(6))
+    }
+
     @Test func linkedPlayersAreKept() {
         let note = Note(text: "Watch his minutes", gameweek: 10, players: [NotePlayer(id: 7, webName: "Isak")])
         #expect(note.players.map(\.webName) == ["Isak"])

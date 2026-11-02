@@ -13,6 +13,10 @@ struct NotesView: View {
     @EnvironmentObject private var gameweeks: GameweekStore
     @Query private var notes: [Note]
     @State private var editor: EditorTarget?
+    /// The last deleted note, while its undo toast is showing.
+    @State private var deleted: DeletedNote?
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.tabBarClearance) private var tabBarClearance
 
     /// What the editor sheet opens: an existing note, or a new one for a gameweek.
     private struct EditorTarget: Identifiable {
@@ -43,6 +47,24 @@ struct NotesView: View {
                 }
             }
             .themedScreen()
+            .overlay(alignment: .bottom) {
+                if let deleted {
+                    UndoToast(message: "Note deleted") {
+                        context.insert(deleted.restored())
+                        withAnimation { self.deleted = nil }
+                    }
+                    .padding(.horizontal, 16)
+                    // The screen runs under the tab bar, so sit just above it.
+                    .padding(.bottom, tabBarClearance + 4)
+                    .transition(reduceMotion ? .opacity : .move(edge: .bottom).combined(with: .opacity))
+                    // Long enough to notice and reach for Undo. A newer delete restarts it.
+                    .task(id: deleted.id) {
+                        try? await Task.sleep(for: .seconds(5))
+                        guard !Task.isCancelled else { return }
+                        withAnimation { self.deleted = nil }
+                    }
+                }
+            }
             .navigationTitle("Notes")
             .navigationBarTitleDisplayMode(.inline)
             .sheet(item: $editor) { target in
@@ -74,7 +96,11 @@ struct NotesView: View {
                         .themedRow()
                     }
                     .onDelete { offsets in
-                        offsets.map { section.notes[$0] }.forEach(context.delete)
+                        for note in offsets.map({ section.notes[$0] }) {
+                            withAnimation { deleted = DeletedNote(note) }
+                            context.delete(note)
+                        }
+                        AccessibilityNotification.Announcement("Note deleted. Undo available.").post()
                     }
                 } header: {
                     SectionHeader(section: section) { gameweek in
@@ -84,6 +110,32 @@ struct NotesView: View {
             }
         }
         .listStyle(.insetGrouped)
+    }
+}
+
+/// A bar confirming a delete, with an Undo button.
+private struct UndoToast: View {
+    let message: String
+    let onUndo: () -> Void
+
+    var body: some View {
+        HStack {
+            Text(message)
+                .font(.subheadline)
+            Spacer()
+            Button("Undo", action: onUndo)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(Theme.accent)
+                .frame(minWidth: 44, minHeight: 44)
+        }
+        .padding(.leading, 16)
+        .padding(.trailing, 8)
+        .background(Theme.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .strokeBorder(Theme.border)
+        }
+        .shadow(color: .black.opacity(0.3), radius: 12, y: 4)
     }
 }
 
