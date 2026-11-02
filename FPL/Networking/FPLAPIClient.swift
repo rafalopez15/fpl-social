@@ -63,6 +63,12 @@ struct FPLAPIClient {
         try await get("fixtures", query: [URLQueryItem(name: "started", value: "false")])
     }
 
+    /// `GET /api/managers/{id}`: an FPL manager's team. 404 when no team has that ID;
+    /// 503 when FPL is down or updating.
+    func manager(id: Int) async throws -> Manager {
+        try await get("managers/\(id)")
+    }
+
     /// `GET /api/events`: every gameweek of the season.
     func events() async throws -> [Event] {
         try await get("events")
