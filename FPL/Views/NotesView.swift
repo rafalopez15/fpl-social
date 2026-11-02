@@ -11,6 +11,8 @@ import SwiftUI
 struct NotesView: View {
     @Environment(\.modelContext) private var context
     @EnvironmentObject private var gameweeks: GameweekStore
+    /// For your points and rank in each gameweek header, when a team is linked.
+    @EnvironmentObject private var linkedTeam: LinkedTeamStore
     @Query private var notes: [Note]
     @State private var editor: EditorTarget?
     /// The last deleted note, while its undo toast is showing.
@@ -92,7 +94,8 @@ struct NotesView: View {
                 Section {
                     GameweekHeader(section: section,
                                    currentGameweek: gameweeks.current,
-                                   deadline: section.gameweek.flatMap(gameweeks.deadline(for:))) { gameweek in
+                                   deadline: section.gameweek.flatMap(gameweeks.deadline(for:)),
+                                   score: section.gameweek.flatMap { linkedTeam.history?.score(for: $0) }) { gameweek in
                         editor = EditorTarget(gameweek: gameweek)
                     }
                     .themedRow()
@@ -156,6 +159,8 @@ private struct GameweekHeader: View {
     let section: NoteSection
     let currentGameweek: Int?
     let deadline: Date?
+    /// Your points and rank that gameweek; nil with no team linked.
+    let score: GameweekScore?
     let onAdd: (Int) -> Void
 
     private var isCurrent: Bool { section.gameweek != nil && section.gameweek == currentGameweek }
@@ -211,6 +216,10 @@ private struct GameweekHeader: View {
 
             Spacer(minLength: 0)
 
+            if let score, score.points != nil {
+                ScoreColumn(score: score)
+            }
+
             if let gameweek = section.gameweek {
                 Button {
                     onAdd(gameweek)
@@ -235,7 +244,67 @@ private struct GameweekHeader: View {
         if isCurrent { label += ", this week" }
         if isPast { label += ", past gameweek, notes locked" }
         if let detail { label += ". \(detail)" }
+        if let score { label += ". \(score.accessibilityDescription)" }
         return label
+    }
+}
+
+/// Points over overall rank, at the right of a gameweek header: "56 pts" and
+/// "▲ 338K". The arrow is green up, red down, so the shape and color both tell it.
+private struct ScoreColumn: View {
+    let score: GameweekScore
+
+    var body: some View {
+        VStack(alignment: .trailing, spacing: 2) {
+            HStack(spacing: 4) {
+                if score.hitCost > 0 {
+                    Text("−\(score.hitCost)")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(Theme.danger)
+                }
+                Text("\(score.points ?? 0) pts")
+                    .font(.subheadline.weight(.semibold))
+                    .monospacedDigit()
+            }
+            if let rank = score.overallRank {
+                HStack(spacing: 3) {
+                    if let change = score.rankChange, change != 0 {
+                        Image(systemName: change > 0 ? "arrowtriangle.up.fill" : "arrowtriangle.down.fill")
+                            .font(.system(size: 8))
+                            .foregroundStyle(change > 0 ? Theme.accent : Theme.danger)
+                    }
+                    Text(GameweekScore.compact(rank))
+                        .font(.caption)
+                        .monospacedDigit()
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+        // The header's label already reads these out.
+        .accessibilityHidden(true)
+    }
+}
+
+extension GameweekScore {
+    /// 337,752 as "338K", 7,045,139 as "7.05M".
+    static func compact(_ rank: Int) -> String {
+        rank.formatted(.number.notation(.compactName).precision(.significantDigits(3)))
+    }
+
+    /// e.g. "56 points, minus 4 for transfers. Overall rank 337,752, up 178,000 places"
+    var accessibilityDescription: String {
+        var parts: [String] = []
+        if let points {
+            parts.append(hitCost > 0 ? "\(points) points, minus \(hitCost) for transfers" : "\(points) points")
+        }
+        if let overallRank {
+            var rank = "Overall rank \(overallRank.formatted())"
+            if let rankChange, rankChange != 0 {
+                rank += ", \(rankChange > 0 ? "up" : "down") \(abs(rankChange).formatted()) places"
+            }
+            parts.append(rank)
+        }
+        return parts.joined(separator: ". ")
     }
 }
 
@@ -279,5 +348,6 @@ private struct NoteRow: View {
 #Preview {
     NotesView()
         .environmentObject(GameweekStore())
+        .environmentObject(LinkedTeamStore())
         .modelContainer(for: Note.self, inMemory: true)
 }

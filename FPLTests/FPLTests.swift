@@ -622,6 +622,34 @@ struct TransferTests {
         #expect(Note.forTransfer(sameDayOtherPlayer, in: [plain, note]) == nil)
     }
 
+    @Test func gameweekScoreHasPointsHitsAndRankMovement() throws {
+        let json = """
+        {"current": [
+          {"event": 7, "points": 77, "overall_rank": 516849, "event_transfers": 1, "event_transfers_cost": 0},
+          {"event": 8, "points": 56, "overall_rank": 337752, "event_transfers": 2, "event_transfers_cost": 4},
+          {"event": 9, "points": 37, "overall_rank": 753169, "event_transfers": 1, "event_transfers_cost": null}],
+         "chips": [], "past": []}
+        """
+        let history = try JSONDecoder.fplAPI.decode(ManagerHistory.self, from: Data(json.utf8))
+
+        let first = try #require(history.score(for: 7))
+        #expect(first.rankChange == nil)
+
+        let up = try #require(history.score(for: 8))
+        #expect(up.points == 56)
+        #expect(up.hitCost == 4)
+        #expect(up.rankChange == 179_097)
+        #expect(up.accessibilityDescription == "56 points, minus 4 for transfers. Overall rank 337,752, up 179,097 places")
+
+        let down = try #require(history.score(for: 9))
+        #expect(down.hitCost == 0)
+        #expect(down.rankChange == -415_417)
+
+        #expect(history.score(for: 10) == nil)
+        #expect(GameweekScore.compact(337_752) == "338K")
+        #expect(GameweekScore.compact(7_045_139) == "7.05M")
+    }
+
     @Test func summaryNamesBothPlayersAndThePrice() {
         #expect(Self.noteTransfer(1, 2, day: 1).summary == "In1 in · Out2 out · £8.6m")
     }
