@@ -111,6 +111,9 @@ private struct ElementRow: View {
     /// All teams, for opponent names in the popover.
     let teams: [Int: Team]
     @State private var showingStats = false
+    /// Set by the popover's note button; the editor opens once the popover has closed.
+    @State private var noteRequested = false
+    @State private var showingNoteEditor = false
 
     private var stat: String {
         switch sort {
@@ -135,10 +138,23 @@ private struct ElementRow: View {
                                 ? "Stats for \(element.webName)"
                                 : "Stats and news for \(element.webName)")
             .popover(isPresented: $showingStats, arrowEdge: .leading) {
-                ElementStatsView(element: element, team: team, fixtures: fixtures, teams: teams)
+                ElementStatsView(element: element, team: team, fixtures: fixtures, teams: teams) {
+                    noteRequested = true
+                    showingStats = false
+                }
                     .presentationBackground(Theme.surface)
                     // Show as a popover bubble on iPhone instead of a full sheet.
                     .presentationCompactAdaptation(.popover)
+            }
+            // A sheet can't open while the popover is still on screen, so wait
+            // for it to close before showing the note editor.
+            .onChange(of: showingStats) { _, isShowing in
+                guard !isShowing, noteRequested else { return }
+                noteRequested = false
+                showingNoteEditor = true
+            }
+            .sheet(isPresented: $showingNoteEditor) {
+                NoteEditorView(players: [NotePlayer(id: element.id, webName: element.webName)])
             }
 
             HStack(alignment: .firstTextBaseline, spacing: 6) {

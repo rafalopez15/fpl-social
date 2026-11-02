@@ -13,20 +13,37 @@ struct ElementStatsView: View {
     var fixtures: [GameweekFixtures] = []
     /// All teams by id, for opponent short names.
     var teams: [Int: Team] = [:]
+    /// Shows an "add note" button in the header when set.
+    var onAddNote: (() -> Void)? = nil
 
     var body: some View {
         // 12pt between blocks, with a hairline between sections so each reads as its own group.
         VStack(alignment: .leading, spacing: 12) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(element.fullName)
-                    .font(.headline)
-                Text(subtitle)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                if let selectedBy = element.selectedByPercent {
-                    Text(String(format: "Selected by %.1f%%", selectedBy))
-                        .font(.footnote)
+            HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(element.fullName)
+                        .font(.headline)
+                    Text(subtitle)
+                        .font(.subheadline)
                         .foregroundStyle(.secondary)
+                    if let selectedBy = element.selectedByPercent {
+                        Text(String(format: "Selected by %.1f%%", selectedBy))
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                Spacer(minLength: 8)
+                if let onAddNote {
+                    Button(action: onAddNote) {
+                        Image(systemName: "square.and.pencil")
+                            .font(.title3)
+                            // 44pt tap target, nudged so the icon lines up with the name.
+                            .frame(width: 44, height: 44)
+                            .contentShape(Rectangle())
+                    }
+                    .padding(.top, -10)
+                    .padding(.trailing, -10)
+                    .accessibilityLabel("Add note about \(element.webName)")
                 }
             }
 
