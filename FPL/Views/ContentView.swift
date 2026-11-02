@@ -67,7 +67,11 @@ struct ContentView: View {
         // ones on launch, when a team is linked, and on returning to the app.
         .task(id: linkedTeam.linked?.id) { await linkedTeam.checkForTransfers() }
         .onChange(of: scenePhase) { _, phase in
-            if phase == .active { Task { await linkedTeam.checkForTransfers() } }
+            if phase == .active {
+                Task { await linkedTeam.checkForTransfers() }
+                // Points and rank move during a gameweek; Notes' headers show them.
+                Task { await linkedTeam.refresh() }
+            }
         }
         .sheet(isPresented: Binding(
             get: { !linkedTeam.pendingTransfers.isEmpty },

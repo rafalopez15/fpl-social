@@ -31,8 +31,9 @@ final class LinkedTeamStore: ObservableObject {
     private var isChecking = false
     /// Player names by id, kept from the last `/elements` load.
     private var names: [Int: String] = [:]
-    /// The last history loaded, so new transfers can update `freeTransfers`.
-    private var history: ManagerHistory?
+    /// The season so far: points and rank per gameweek for the Notes tab, and
+    /// transfers per gameweek for `freeTransfers`. Nil until loaded.
+    @Published private(set) var history: ManagerHistory?
 
     init(defaults: UserDefaults = .standard, client: FPLAPIClient = FPLAPIClient()) {
         self.defaults = defaults
