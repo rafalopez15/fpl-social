@@ -429,3 +429,73 @@ struct NoteTests {
         #expect(note.updatedAt == note.createdAt)
     }
 }
+
+struct ManagerTests {
+
+    /// `GET /api/managers/1`, trimmed.
+    static let response = """
+    {"id": 1, "name": "Solio Moose", "player_first_name": "Chris", "player_last_name": "Musson",
+     "current_event": 9, "started_event": 1, "favourite_team": 14, "player_region_name": "England",
+     "summary_overall_points": 563, "summary_overall_rank": 1571477,
+     "summary_event_points": 55, "summary_event_rank": 1972509,
+     "last_deadline_bank": 21, "last_deadline_value": 1022, "last_deadline_total_transfers": 6}
+    """
+
+    static func manager(_ json: String = response) throws -> Manager {
+        try JSONDecoder.fplAPI.decode(Manager.self, from: Data(json.utf8))
+    }
+
+    @Test func decodesManager() throws {
+        let manager = try Self.manager()
+        #expect(manager.id == 1)
+        #expect(manager.name == "Solio Moose")
+        #expect(manager.managerName == "Chris Musson")
+        #expect(manager.summaryOverallRank == 1_571_477)
+        #expect(manager.lastDeadlineValue == 1022)
+    }
+
+    @Test func optionalFieldsCanBeNullOrMissing() throws {
+        let manager = try Self.manager("""
+        {"id": 2, "name": "New Team", "player_first_name": "Ana", "player_last_name": "",
+         "current_event": null}
+        """)
+        #expect(manager.currentEvent == nil)
+        #expect(manager.summaryOverallPoints == nil)
+        #expect(manager.managerName == "Ana")
+    }
+
+    @Test(arguments: [
+        ("1234567", "1234567"),
+        ("12a3 4", "1234"),
+        ("fantasy.premierleague.com/entry/1234567/event/9", "12345679"),
+        ("123456789012", "1234567890"),
+    ])
+    func idFieldKeepsDigitsOnly(input: String, expected: String) {
+        #expect(LinkTeamModel.digits(in: input) == expected)
+    }
+
+    @Test func lookupErrorsMapToMessages() {
+        #expect(LinkError(FPLAPIClient.APIError.notFound("Manager not found")) == .notFound)
+        #expect(LinkError(FPLAPIClient.APIError.dataUnavailable("FPL is unavailable right now")) == .fplUnavailable)
+        #expect(LinkError(URLError(.notConnectedToInternet)) == .other)
+        #expect(!LinkError.notFound.canRetry)
+        #expect(LinkError.fplUnavailable.canRetry)
+    }
+
+    @MainActor @Test func linkSurvivesARestartAndUnlinks() throws {
+        let suite = "FPLTests.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        let store = LinkedTeamStore(defaults: defaults)
+        #expect(store.linked == nil)
+        store.link(try Self.manager())
+
+        // A new store reads the saved link, as after relaunching the app.
+        let relaunched = LinkedTeamStore(defaults: defaults)
+        #expect(relaunched.linked == LinkedTeam(id: 1, teamName: "Solio Moose", managerName: "Chris Musson"))
+
+        relaunched.unlink()
+        #expect(LinkedTeamStore(defaults: defaults).linked == nil)
+    }
+}

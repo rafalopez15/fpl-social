@@ -16,6 +16,7 @@ The app reads from [fplAPI](#backend), a FastAPI backend that wraps the official
 - **Player stats.** The ⓘ button on each row opens a popover with the player's injury or availability news (with when it was last updated), position, team, ownership, fixtures for the next 3 gameweeks with FPL's difficulty ratings, season stats (minutes, goals, assists, clean sheets, bonus, cards and more) and expected stats (xG, xA, xGI, xGC, ICT index).
 - **Team short names** (ARS, MCI, LIV) next to each player.
 - **Notes.** Write notes about who you're watching or holding, from the Notes tab or from a player's stats popover (which links that player). Each note is tagged with the gameweek and stored on your device.
+- **Link your FPL team.** Enter your FPL manager ID on the Profile tab to link your team and see its points and rank. It's saved on your device, no sign-in needed.
 - Pull to refresh.
 
 ## Design

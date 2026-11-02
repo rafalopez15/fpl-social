@@ -6,7 +6,7 @@ Guidance for Claude Code when working in this repo.
 
 FPL is a SwiftUI iOS app for browsing Fantasy Premier League players. It doesn't call FPL directly. It talks to **fplAPI**, a separate FastAPI backend (its own repo) that wraps the FPL API and serves cleaned-up JSON under `/api`. FPL calls players "elements", and the code keeps that name.
 
-Current features: a tab bar (Feed, Players, Notes, Profile), and on the Players tab a player list per position, sorting, search, a stats popover per player, and team short names. Notes lets you write notes tagged with the gameweek (stored on the device). Feed and Profile are placeholders; the backlog for them lives in Linear (team FPL Social, projects Transfer Notes and FPL Social).
+Current features: a tab bar (Feed, Players, Notes, Profile), and on the Players tab a player list per position, sorting, search, a stats popover per player, and team short names. Notes lets you write notes tagged with the gameweek (stored on the device). Profile links your FPL team by manager ID. Feed is a placeholder; the backlog for them lives in Linear (team FPL Social, projects Transfer Notes and FPL Social).
 
 ## Build and test
 
@@ -42,6 +42,7 @@ Endpoints the app uses:
 | `GET /api/elements/position/{1-4}` | `[Element]` | 404 when empty; the client turns that into `[]` |
 | `GET /api/teams` | `[Team]` | Loaded once per launch |
 | `GET /api/fixtures?started=false` | `[Fixture]` | Matches still to be played, by kickoff. Loaded once per launch |
+| `GET /api/managers/{id}` | `Manager` | Profile's link flow and linked team. 404 "Manager not found", 503 "FPL is unavailable right now". Called live from FPL, cached up to 60s by Vercel |
 | `GET /api/events` | `[Event]` | Gameweeks; `is_next` picks where upcoming fixtures start. Loaded with fixtures |
 | `GET /api/elements`, `GET /api/elements/{id}` | `[Element]`, `Element` | Wrapped in the client, not used by the UI yet |
 
@@ -60,11 +61,14 @@ FPL/
     Team.swift                  Team id, name, short name
     Fixture.swift               Fixture, Event, FixtureSchedule (a team's next gameweeks)
     Note.swift                  SwiftData Note, NotePlayer, NoteSection (grouping by gameweek)
+    Manager.swift               Manager (an FPL team from /managers/{id}), LinkedTeam
   Networking/
     FPLAPIClient.swift          async/await client, maps HTTP errors to APIError
   ViewModel/
     ElementViewModel.swift      @MainActor ObservableObject: loading, search, sort, teams
     GameweekStore.swift         Gameweeks and the current one, shared via environment (note tags, deadlines)
+    LinkedTeamStore.swift       The linked FPL team, saved in UserDefaults, shared via environment
+    LinkTeamModel.swift         Link flow: digits-only ID, lookup, confirm; LinkError messages
   Views/
     ContentView.swift           Root: AppTab enum, the four tabs in a ZStack, FloodlightsTabBar (opens on Feed)
     Theme.swift                 Floodlights colors, Color(hex:), themedScreen() and themedRow() modifiers
@@ -72,7 +76,7 @@ FPL/
     FeedView.swift              Feed tab (placeholder, FPL-15)
     NotesView.swift             Notes tab: every gameweek so far with a + to add, edit, swipe to delete
     NoteEditorView.swift        Sheet to write or edit a note, with linked player chips
-    ProfileView.swift           Profile tab (placeholder, FPL-9 / FPL-11)
+    ProfileView.swift           Profile tab: link your FPL team, then change or unlink it
     ElementStatsView.swift      Stats popover content
 FPLTests/FPLTests.swift         Swift Testing: decoding and sort tests
 ```
@@ -102,6 +106,16 @@ Notes (FPL-10) are personal and stored on the device with SwiftData. `ContentVie
 - Linked players are stored as `NotePlayer` (id plus `webName`), so notes show names without loading the player list.
 - Notes are written from a gameweek's `+` on the Notes tab, or from the stats popover's `square.and.pencil` button, which writes one for the current gameweek and links that player. The popover closes first and the editor sheet opens from the row in `onChange(of: showingStats)`, because a sheet can't present while the popover is up.
 - There's no player picker in the editor yet; players can only be linked from the popover, and unlinked with the chip's ×.
+
+## Linked FPL team
+
+Profile links your FPL team by manager ID (FPL-30). There are no accounts yet (FPL-11), so the link lives on the device.
+
+- `LinkedTeamStore` (environment object from `ContentView`) saves a `LinkedTeam` (id, team name, manager name) as JSON in UserDefaults under `linkedTeam`, so the link survives relaunches and shows without a network call. `refresh()` fetches points and rank for the card and keeps the saved names if it fails. Transfer notes (FPL-12) read the manager ID from here.
+- The link flow (`LinkTeamModel`): a digits-only field (capped at 10 digits; pasting an FPL URL keeps only its digits), "Find team", then an "Is this your team?" card with team name, manager name, points and rank. Nothing is saved until "Link team". "Not my team" goes back to the field with the ID kept.
+- Errors show under the field: 404 "No FPL team with that ID" (red, no retry, since retrying won't help), 503 "FPL is down or updating..." and connection failures (yellow, the button becomes "Try again").
+- Linked: a card with team, manager name, ID, overall points, overall rank and last gameweek's points, plus "Change team" (the current link stays until a new team is confirmed; Cancel returns) and "Unlink team" (confirmation dialog).
+- Profile hides its title bar, like Notes.
 
 ## Loading state
 
