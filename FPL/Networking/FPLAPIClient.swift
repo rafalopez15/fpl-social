@@ -69,6 +69,16 @@ struct FPLAPIClient {
         try await get("managers/\(id)")
     }
 
+    /// `GET /api/managers/{id}/transfers`: the manager's transfers this season, newest first.
+    func transfers(managerID: Int) async throws -> [Transfer] {
+        try await get("managers/\(managerID)/transfers")
+    }
+
+    /// `GET /api/managers/{id}/history`: points per gameweek and chips used this season.
+    func history(managerID: Int) async throws -> ManagerHistory {
+        try await get("managers/\(managerID)/history")
+    }
+
     /// `GET /api/events`: every gameweek of the season.
     func events() async throws -> [Event] {
         try await get("events")

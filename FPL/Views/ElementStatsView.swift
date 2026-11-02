@@ -3,6 +3,7 @@
 //  FPL
 //
 
+import SwiftData
 import SwiftUI
 
 /// Season and advanced stats for one player, shown in a popover from the list.
@@ -13,8 +14,13 @@ struct ElementStatsView: View {
     var fixtures: [GameweekFixtures] = []
     /// All teams by id, for opponent short names.
     var teams: [Int: Team] = [:]
+    /// The linked team's transfers this season, nil when not loaded or not linked.
+    var transfers: [NamedTransfer]? = nil
     /// Shows an "add note" button in the header when set.
     var onAddNote: (() -> Void)? = nil
+
+    /// For the transfer note section. Few enough to filter in memory.
+    @Query private var notes: [Note]
 
     var body: some View {
         // 12pt between blocks, with a hairline between sections so each reads as its own group.
@@ -49,6 +55,11 @@ struct ElementStatsView: View {
 
             if element.availabilityFlag != nil || element.currentNews != nil {
                 NewsCallout(element: element)
+            }
+
+            if let latest = Note.latestTransfer(for: element.id, history: transfers, notes: notes) {
+                SectionDivider()
+                TransferSection(latest: latest)
             }
 
             if !fixtures.isEmpty {
@@ -206,6 +217,51 @@ private struct DifficultyChip: View {
             .foregroundStyle(colors.foreground)
             .frame(maxWidth: .infinity, minHeight: 24)
             .background(colors.background, in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+    }
+}
+
+/// Your latest transfer of this player: when you bought or sold him, the
+/// price, and your note from that transfer if there is one.
+private struct TransferSection: View {
+    let latest: PlayerTransfer
+
+    private var heading: String {
+        let gameweek = latest.gameweek.map { " in GW\($0)" } ?? ""
+        return latest.broughtIn ? "Bought\(gameweek)" : "Sold\(gameweek)"
+    }
+
+    /// "£8.0m" when bought, "£8.3m, replaced by Isak" when sold.
+    private var detail: String? {
+        let transfer = latest.transfer
+        let price = (latest.broughtIn ? transfer.cost : transfer.outCost)
+            .map { String(format: "£%.1fm", Double($0) / 10) }
+        if latest.broughtIn { return price }
+        return [price, "replaced by \(transfer.playerIn.webName)"].compactMap { $0 }.joined(separator: ", ")
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Label(heading.uppercased(), systemImage: latest.broughtIn ? "arrow.down.left" : "arrow.up.right")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(latest.broughtIn ? Theme.accent : Theme.secondaryText)
+            if let detail {
+                Text(detail)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+            if let note = latest.note {
+                if note.text.isEmpty {
+                    Text("No note written.")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                } else {
+                    Text("\u{201C}\(note.text)\u{201D}")
+                        .font(.subheadline)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+        }
+        .accessibilityElement(children: .combine)
     }
 }
 

@@ -19,18 +19,26 @@ struct NoteEditorView: View {
     @State private var players: [NotePlayer]
     /// The gameweek a new note goes in, from the Notes tab's +. Nil means the current one.
     private let newNoteGameweek: Int?
+    /// The transfer a new note is about, from Profile's transfer list.
+    private let newNoteTransfer: NoteTransfer?
     @FocusState private var isEditorFocused: Bool
 
     /// - Parameters:
     ///   - note: The note to edit or read. Nil writes a new one.
     ///   - gameweek: The gameweek for a new note. Nil uses the current gameweek.
     ///   - players: Players to link to a new note, e.g. from the stats popover.
-    init(note: Note? = nil, gameweek: Int? = nil, players: [NotePlayer] = []) {
+    ///   - transfer: Makes a new note a transfer note, e.g. from Profile's transfer list.
+    ///     Its player in is linked; pass the transfer's gameweek as `gameweek`.
+    init(note: Note? = nil, gameweek: Int? = nil, players: [NotePlayer] = [], transfer: NoteTransfer? = nil) {
         self.note = note
         newNoteGameweek = gameweek
+        newNoteTransfer = note == nil ? transfer : nil
         _text = State(initialValue: note?.text ?? "")
-        _players = State(initialValue: note?.players ?? players)
+        _players = State(initialValue: note?.players ?? transfer.map { [$0.playerIn] } ?? players)
     }
+
+    /// The transfer the note is about, saved or new.
+    private var transfer: NoteTransfer? { note?.transfer ?? newNoteTransfer }
 
     private var gameweek: Int? {
         if let note { return note.gameweek }
@@ -49,11 +57,18 @@ struct NoteEditorView: View {
         return note.isLocked(currentGameweek: gameweeks.current)
     }
 
-    private var date: Date { note?.createdAt ?? .now }
+    /// A transfer note is dated by the transfer, like the ones from the prompt.
+    private var date: Date { note?.createdAt ?? newNoteTransfer?.time ?? .now }
+    private var placeholder: String {
+        if let transfer { return "Why did you bring in \(transfer.playerIn.webName)?" }
+        return "What are you thinking?"
+    }
+
     private var canSave: Bool { !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
 
     private var title: String {
-        if note == nil { return "New note" }
+        if note == nil { return transfer == nil ? "New note" : "Why this transfer?" }
+        if transfer != nil { return isReadOnly ? "Transfer note" : "Why this transfer?" }
         return isReadOnly ? "Note" : "Edit note"
     }
 
@@ -73,7 +88,13 @@ struct NoteEditorView: View {
                     }
                 }
 
-                if !players.isEmpty {
+                if let transfer {
+                    // A transfer note's players are the transfer itself, not editable chips.
+                    TransferLine(transfer: transfer)
+                        .padding(12)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(Theme.surface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                } else if !players.isEmpty {
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: 8) {
                             ForEach(players) { player in
@@ -137,7 +158,7 @@ struct NoteEditorView: View {
             .background(Theme.surface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
             .overlay(alignment: .topLeading) {
                 if text.isEmpty {
-                    Text("What are you thinking?")
+                    Text(placeholder)
                         .foregroundStyle(Theme.secondaryText)
                         .padding(.horizontal, 13)
                         .padding(.vertical, 16)
@@ -155,7 +176,8 @@ struct NoteEditorView: View {
             note.players = players
             note.updatedAt = .now
         } else {
-            context.insert(Note(text: trimmed, gameweek: gameweek, players: players))
+            context.insert(Note(text: trimmed, gameweek: gameweek, players: players,
+                                transfer: newNoteTransfer, createdAt: date))
         }
         dismiss()
     }
