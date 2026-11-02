@@ -5,6 +5,7 @@
 //  Created by Rafael Lopez on 11/4/24.
 //
 
+import SwiftData
 import SwiftUI
 
 /// The app's top-level tabs. Each tab owns its own NavigationStack.
@@ -39,6 +40,8 @@ enum AppTab: CaseIterable, Identifiable {
 /// and loaded data, and the switch itself is instant.
 struct ContentView: View {
     @State private var selection: AppTab = .feed
+    /// Shared so a note written from any tab is tagged with the current gameweek.
+    @StateObject private var gameweeks = GameweekStore()
     /// Measured tab bar height, passed to screens so lists scroll clear of it.
     @State private var tabBarHeight: CGFloat = 0
 
@@ -55,6 +58,10 @@ struct ContentView: View {
         .environment(\.tabBarClearance, tabBarHeight)
         .modifier(TabBarPlacement(selection: $selection, height: $tabBarHeight))
         .background(Theme.background.ignoresSafeArea())
+        .environmentObject(gameweeks)
+        .task { await gameweeks.loadIfNeeded() }
+        // Notes live on the device.
+        .modelContainer(for: Note.self)
     }
 
     @ViewBuilder
