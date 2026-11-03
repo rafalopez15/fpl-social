@@ -26,10 +26,7 @@ struct ProfileView: View {
                             confirmingUnlink = true
                         }
 
-                        SquadSection(state: teamStore.squad, players: teamStore.players,
-                                     livePoints: teamStore.livePoints) {
-                            Task { await teamStore.refresh() }
-                        }
+                        SquadSection()
 
                         TransfersSection(history: teamStore.transferHistory,
                                          failed: teamStore.transferHistoryFailed) {
