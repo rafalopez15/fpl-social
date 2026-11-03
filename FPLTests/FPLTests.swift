@@ -832,3 +832,91 @@ struct PicksTests {
         #expect(SquadState(missing, playersLoaded: true, previous: .loaded(picks)) == .none)
     }
 }
+
+/// Answers requests from `StubURLProtocol.responses` by path, after `delay`, so
+/// a test can cancel a load while its requests are still in flight. Used only
+/// through `session`, never registered globally.
+final class StubURLProtocol: URLProtocol {
+    nonisolated(unsafe) static var responses: [String: (status: Int, body: String)] = [:]
+    nonisolated(unsafe) static var delay: TimeInterval = 0
+
+    static var session: URLSession {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [StubURLProtocol.self]
+        return URLSession(configuration: configuration)
+    }
+
+    private var stopped = false
+
+    override class func canInit(with request: URLRequest) -> Bool { true }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+
+    override func startLoading() {
+        DispatchQueue.global().asyncAfter(deadline: .now() + Self.delay) { [self] in
+            guard !stopped, let url = request.url else { return }
+            let stub = Self.responses[url.path] ?? (404, #"{"detail": "Not found"}"#)
+            let response = HTTPURLResponse(url: url, statusCode: stub.status, httpVersion: nil, headerFields: nil)!
+            client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+            client?.urlProtocol(self, didLoad: Data(stub.body.utf8))
+            client?.urlProtocolDidFinishLoading(self)
+        }
+    }
+
+    override func stopLoading() { stopped = true }
+}
+
+@MainActor @Suite(.serialized)
+struct EarlierSquadTests {
+    func store() throws -> (LinkedTeamStore, UserDefaults, String) {
+        let suite = "FPLTests.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        let client = FPLAPIClient(baseURL: URL(string: "https://stub.test/api")!, session: StubURLProtocol.session)
+        let store = LinkedTeamStore(defaults: defaults, client: client)
+        store.link(try ManagerTests.manager())
+        return (store, defaults, suite)
+    }
+
+    func stubSquad(managerID: Int) {
+        StubURLProtocol.responses = [
+            "/api/managers/\(managerID)/picks": (200, PicksTests.json),
+            "/api/events/8/live": (200, #"[{"id": 30, "total_points": 8, "minutes": 90}]"#),
+            "/api/elements": (200, "[]"),
+        ]
+    }
+
+    @Test func aCancelledLoadDoesNotShowRetry() async throws {
+        let (store, defaults, suite) = try store()
+        defer { defaults.removePersistentDomain(forName: suite) }
+        stubSquad(managerID: try #require(store.linked?.id))
+        StubURLProtocol.delay = 0.5
+
+        // Stepping past gameweek 8 before it loads cancels its task.
+        let load = Task { await store.loadSquad(gameweek: 8) }
+        try await Task.sleep(for: .milliseconds(50))
+        load.cancel()
+        await load.value
+        #expect(store.earlierSquads[8] == .loading)
+        #expect(store.earlierPoints[8] == nil)
+
+        // Coming back to it loads it.
+        StubURLProtocol.delay = 0
+        await store.loadSquad(gameweek: 8)
+        #expect(store.earlierSquads[8] == .loaded(try PicksTests.picks()))
+        #expect(store.earlierPoints[8]?.points == [30: 8])
+    }
+
+    @Test func aFailedLoadShowsRetryAndA404ShowsNoSquad() async throws {
+        let (store, defaults, suite) = try store()
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let id = try #require(store.linked?.id)
+        StubURLProtocol.delay = 0
+
+        StubURLProtocol.responses = ["/api/managers/\(id)/picks": (503, #"{"detail": "FPL is unavailable right now"}"#)]
+        await store.loadSquad(gameweek: 8)
+        #expect(store.earlierSquads[8] == .failed)
+
+        StubURLProtocol.responses = [:]
+        await store.loadSquad(gameweek: 2)
+        #expect(store.earlierSquads[2] == SquadState.none)
+    }
+}

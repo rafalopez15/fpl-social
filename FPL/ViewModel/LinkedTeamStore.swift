@@ -176,6 +176,10 @@ final class LinkedTeamStore: ObservableObject {
 
     /// Loads the squad and points for an earlier gameweek, unless already loaded.
     /// A failure shows Retry for that gameweek; a 404 shows that there's no squad.
+    ///
+    /// Stepping past a gameweek cancels its load (the view's `.task(id:)`). A
+    /// cancelled load writes nothing: its requests fail with a cancellation that
+    /// isn't a real failure, and a newer load of the same gameweek may be running.
     func loadSquad(gameweek: Int) async {
         guard let id = linked?.id else { return }
         if case .loaded = earlierSquads[gameweek] { return }
@@ -186,7 +190,7 @@ final class LinkedTeamStore: ObservableObject {
         let (result, elements) = await (picks, live)
         let ids = (try? result.get())?.picks.map(\.element) ?? []
         let playersLoaded = await loadPlayers(ids)
-        guard linked?.id == id else { return }
+        guard !Task.isCancelled, linked?.id == id else { return }
         if let elements {
             earlierPoints[gameweek] = LivePoints(gameweek: gameweek, elements: elements, fixtures: nil)
         }
