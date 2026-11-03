@@ -26,6 +26,12 @@ enum Theme {
     static let warning = Color(hex: 0xFBBF24)
     /// Players ruled out (0% chance). 6.8:1 on background, 6.1:1 on surface.
     static let danger = Color(hex: 0xF87171)
+    /// The squad pitch's grass and its lighter mowing stripe, darker than FPL's
+    /// bright green so the pitch sits in the navy theme.
+    static let pitch = Color(hex: 0x14532D)
+    static let pitchStripe = Color(hex: 0x17603A)
+    /// Shirts on the pitch until club colors arrive (FPL-38).
+    static let shirt = Color(hex: 0x9CA3AF)
 
     /// Chip colors for FPL's 1–5 fixture difficulty, green (easy) to dark red (hard),
     /// following FPL's own scale. Each pairing passes 4.5:1.

@@ -22,6 +22,11 @@ final class LinkedTeamStore: ObservableObject {
     @Published private(set) var freeTransfers: Int?
     /// True when the last attempt to load `transferHistory` failed.
     @Published private(set) var transferHistoryFailed = false
+    /// The squad as of the latest deadline, for Profile.
+    @Published private(set) var squad: SquadState = .loading
+    /// Players by id from the last `/elements` load: names for transfers, and the
+    /// squad's rows and stats popovers.
+    @Published private(set) var players: [Int: Element] = [:]
 
     private let defaults: UserDefaults
     private let client: FPLAPIClient
@@ -29,8 +34,6 @@ final class LinkedTeamStore: ObservableObject {
     /// Transfers made before this time have been prompted for, or predate the link.
     private static let seenKey = "transfersSeenUntil"
     private var isChecking = false
-    /// Player names by id, kept from the last `/elements` load.
-    private var names: [Int: String] = [:]
     /// The season so far: points and rank per gameweek for the Notes tab, and
     /// transfers per gameweek for `freeTransfers`. Nil until loaded.
     @Published private(set) var history: ManagerHistory?
@@ -63,6 +66,7 @@ final class LinkedTeamStore: ObservableObject {
         transferHistoryFailed = false
         freeTransfers = nil
         history = nil
+        squad = .loading
     }
 
     func unlink() {
@@ -73,6 +77,7 @@ final class LinkedTeamStore: ObservableObject {
         transferHistoryFailed = false
         freeTransfers = nil
         history = nil
+        squad = .loading
         defaults.removeObject(forKey: Self.key)
         defaults.removeObject(forKey: Self.seenKey)
     }
@@ -91,7 +96,7 @@ final class LinkedTeamStore: ObservableObject {
         guard !new.isEmpty else { return }
 
         // Names for the prompt; without them, wait rather than show bare ids.
-        guard await loadNames(including: new), linked?.id == id else { return }
+        guard await loadPlayers(Transfer.players(in: new)), linked?.id == id else { return }
         pendingTransfers = new.map { NamedTransfer($0, names: names) }
         // Keep Profile in step with the prompt.
         transferHistory = transfers.map { NamedTransfer($0, names: names) }
@@ -106,14 +111,17 @@ final class LinkedTeamStore: ObservableObject {
         pendingTransfers = []
     }
 
-    /// Fetches the linked team's latest points and rank. Failures keep what's
-    /// shown: the saved names are enough to display the link.
+    /// Fetches the linked team's latest points, rank, transfers and squad.
+    /// Failures keep what's shown: the saved names are enough to display the link.
     func refresh() async {
         guard let id = linked?.id else { return }
+        // A retry after a failure shows the placeholder again while it loads.
+        if squad == .failed { squad = .loading }
         async let fresh = try? client.manager(id: id)
         async let season = try? client.transfers(managerID: id)
         async let gameweeks = try? client.history(managerID: id)
-        let (manager, transfers, history) = await (fresh, season, gameweeks)
+        async let squadResult = fetchPicks(managerID: id)
+        let (manager, transfers, history, picks) = await (fresh, season, gameweeks, squadResult)
         guard linked?.id == id else { return }
         if let manager { self.manager = manager }
         if let history { self.history = history }
@@ -121,22 +129,63 @@ final class LinkedTeamStore: ObservableObject {
             freeTransfers = FreeTransfers.available(history: history, upcoming: transfers)
         }
 
-        guard let transfers, await loadNames(including: transfers), linked?.id == id else {
-            if transferHistory == nil { transferHistoryFailed = true }
-            return
+        let squadPicks = try? picks.get()
+        let ids = Transfer.players(in: transfers ?? []) + (squadPicks?.picks.map(\.element) ?? [])
+        let playersLoaded = await loadPlayers(ids)
+        guard linked?.id == id else { return }
+
+        if let transfers, playersLoaded {
+            transferHistory = transfers.map { NamedTransfer($0, names: names) }
+            transferHistoryFailed = false
+        } else if transferHistory == nil {
+            transferHistoryFailed = true
         }
-        transferHistory = transfers.map { NamedTransfer($0, names: names) }
-        transferHistoryFailed = false
+
+        squad = SquadState(picks, playersLoaded: playersLoaded, previous: squad)
     }
 
-    /// Loads player names from `/elements` unless every player in `transfers`
-    /// is already known. Returns false if they couldn't be loaded.
-    private func loadNames(including transfers: [Transfer]) async -> Bool {
-        let ids = transfers.flatMap { [$0.elementIn, $0.elementOut] }
-        if ids.allSatisfy({ names[$0] != nil }) { return true }
+    private func fetchPicks(managerID: Int) async -> Result<ManagerPicks, Error> {
+        do { return .success(try await client.picks(managerID: managerID)) } catch { return .failure(error) }
+    }
+
+    private var names: [Int: String] { players.mapValues(\.webName) }
+
+    /// Loads players from `/elements` unless every id is already known.
+    /// Returns false if they couldn't be loaded.
+    private func loadPlayers(_ ids: [Int]) async -> Bool {
+        if ids.allSatisfy({ players[$0] != nil }) { return true }
         guard let elements = try? await client.elements() else { return false }
-        names = Dictionary(elements.map { ($0.id, $0.webName) }, uniquingKeysWith: { first, _ in first })
+        players = Dictionary(elements.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         return true
+    }
+}
+
+/// Profile's squad section: loading, the squad, none yet, or failed.
+enum SquadState: Equatable {
+    case loading
+    case loaded(ManagerPicks)
+    /// 404: before the manager's first deadline, or the team no longer exists.
+    case none
+    /// FPL down (503), no connection, or the players couldn't load. Retry with `refresh()`.
+    case failed
+
+    /// The state after a fetch. A failure keeps a squad already on screen.
+    init(_ result: Result<ManagerPicks, Error>, playersLoaded: Bool, previous: SquadState) {
+        switch result {
+        case .success(let picks) where playersLoaded:
+            self = .loaded(picks)
+        case .failure(FPLAPIClient.APIError.notFound):
+            self = .none
+        default:
+            if case .loaded = previous { self = previous } else { self = .failed }
+        }
+    }
+}
+
+extension Transfer {
+    /// Both players in each transfer, for loading names.
+    static func players(in transfers: [Transfer]) -> [Int] {
+        transfers.flatMap { [$0.elementIn, $0.elementOut] }
     }
 }
 

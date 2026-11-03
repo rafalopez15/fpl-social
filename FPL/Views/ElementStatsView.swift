@@ -18,6 +18,9 @@ struct ElementStatsView: View {
     var transfers: [NamedTransfer]? = nil
     /// Shows an "add note" button in the header when set.
     var onAddNote: (() -> Void)? = nil
+    /// False hides the Season and Advanced stats, for Profile's squad, where
+    /// the transfer and fixtures are what matter.
+    var showsStats = true
 
     /// For the transfer note section. Few enough to filter in memory.
     @Query private var notes: [Note]
@@ -67,33 +70,40 @@ struct ElementStatsView: View {
                 FixturesSection(gameweeks: fixtures, teams: teams)
             }
 
-            SectionDivider()
-
-            StatSection(title: "Season", stats: [
-                ("Minutes", int(element.minutes)),
-                ("Starts", int(element.starts)),
-                ("Goals", int(element.goalsScored)),
-                ("Assists", int(element.assists)),
-                ("Clean sheets", int(element.cleanSheets)),
-                ("Goals conceded", int(element.goalsConceded)),
-                ("Saves", int(element.saves)),
-                ("Bonus", int(element.bonus)),
-                ("Yellow cards", int(element.yellowCards)),
-                ("Red cards", int(element.redCards)),
-            ])
-
-            SectionDivider()
-
-            StatSection(title: "Advanced", stats: [
-                ("xG", decimal(element.expectedGoals, places: 2)),
-                ("xA", decimal(element.expectedAssists, places: 2)),
-                ("xGI", decimal(element.expectedGoalInvolvements, places: 2)),
-                ("xGC", decimal(element.expectedGoalsConceded, places: 2)),
-                ("ICT index", decimal(element.ictIndex, places: 1)),
-            ])
+            if showsStats {
+                stats
+            }
         }
         .padding()
         .frame(width: 300)
+    }
+
+    @ViewBuilder
+    private var stats: some View {
+        SectionDivider()
+
+        StatSection(title: "Season", stats: [
+            ("Minutes", int(element.minutes)),
+            ("Starts", int(element.starts)),
+            ("Goals", int(element.goalsScored)),
+            ("Assists", int(element.assists)),
+            ("Clean sheets", int(element.cleanSheets)),
+            ("Goals conceded", int(element.goalsConceded)),
+            ("Saves", int(element.saves)),
+            ("Bonus", int(element.bonus)),
+            ("Yellow cards", int(element.yellowCards)),
+            ("Red cards", int(element.redCards)),
+        ])
+
+        SectionDivider()
+
+        StatSection(title: "Advanced", stats: [
+            ("xG", decimal(element.expectedGoals, places: 2)),
+            ("xA", decimal(element.expectedAssists, places: 2)),
+            ("xGI", decimal(element.expectedGoalInvolvements, places: 2)),
+            ("xGC", decimal(element.expectedGoalsConceded, places: 2)),
+            ("ICT index", decimal(element.ictIndex, places: 1)),
+        ])
     }
 
     /// e.g. "Forward · Man City"
@@ -316,5 +326,65 @@ private struct StatSection: View {
             .monospacedDigit()
             .fontWeight(.semibold)
             .gridColumnAlignment(.trailing)
+    }
+}
+
+// MARK: - Presenting
+
+extension View {
+    /// The stats popover for `element`, with its note button: tapping it closes
+    /// the popover and opens the note editor for the current gameweek with the
+    /// player linked. Used by the Players list and Profile's squad, which passes
+    /// `showsStats: false` to leave out the season and advanced stats.
+    func statsPopover(isPresented: Binding<Bool>, element: Element, team: Team?,
+                      fixtures: [GameweekFixtures], teams: [Int: Team],
+                      showsStats: Bool = true, arrowEdge: Edge = .leading) -> some View {
+        modifier(StatsPopover(isPresented: isPresented, element: element, team: team,
+                              fixtures: fixtures, teams: teams, showsStats: showsStats,
+                              arrowEdge: arrowEdge))
+    }
+}
+
+private struct StatsPopover: ViewModifier {
+    @Binding var isPresented: Bool
+    let element: Element
+    let team: Team?
+    let fixtures: [GameweekFixtures]
+    let teams: [Int: Team]
+    let showsStats: Bool
+    let arrowEdge: Edge
+
+    /// Passed into the popover explicitly: its content doesn't reliably inherit
+    /// the model container, so its transfer-note @Query came back empty.
+    @Environment(\.modelContext) private var modelContext
+    /// For the popover's transfer section.
+    @EnvironmentObject private var linkedTeam: LinkedTeamStore
+    /// Set by the popover's note button; the editor opens once the popover has closed.
+    @State private var noteRequested = false
+    @State private var showingNoteEditor = false
+
+    func body(content: Content) -> some View {
+        content
+            .popover(isPresented: $isPresented, arrowEdge: arrowEdge) {
+                ElementStatsView(element: element, team: team, fixtures: fixtures, teams: teams,
+                                 transfers: linkedTeam.transferHistory, onAddNote: {
+                    noteRequested = true
+                    isPresented = false
+                }, showsStats: showsStats)
+                .modelContext(modelContext)
+                .presentationBackground(Theme.surface)
+                // Show as a popover bubble on iPhone instead of a full sheet.
+                .presentationCompactAdaptation(.popover)
+            }
+            // A sheet can't open while the popover is still on screen, so wait
+            // for it to close before showing the note editor.
+            .onChange(of: isPresented) { _, isShowing in
+                guard !isShowing, noteRequested else { return }
+                noteRequested = false
+                showingNoteEditor = true
+            }
+            .sheet(isPresented: $showingNoteEditor) {
+                NoteEditorView(players: [NotePlayer(id: element.id, webName: element.webName)])
+            }
     }
 }
