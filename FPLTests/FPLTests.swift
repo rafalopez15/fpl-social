@@ -771,6 +771,55 @@ struct PicksTests {
         #expect(picks.subbedIn == [12] && picks.subbedOut == [10])
     }
 
+    static func fixture(_ id: Int, event: Int, home: Int, away: Int, started: Bool = false) -> Fixture {
+        Fixture(id: id, event: event, teamH: home, teamA: away, teamHDifficulty: 3, teamADifficulty: 3,
+                kickoffTime: nil, started: started, finished: false, teamHScore: nil, teamAScore: nil)
+    }
+
+    @Test func decodesLivePointsWithNulls() throws {
+        let data = Data(#"[{"id": 1, "total_points": 5, "minutes": 90}, {"id": 2, "total_points": null, "minutes": null}]"#.utf8)
+        let elements = try JSONDecoder.fplAPI.decode([LiveElement].self, from: data)
+        #expect(elements == [LiveElement(id: 1, totalPoints: 5, minutes: 90), LiveElement(id: 2)])
+        let live = LivePoints(gameweek: 9, elements: elements, fixtures: nil)
+        #expect(live.points == [1: 5] && live.minutes == [1: 90])
+    }
+
+    @Test func scoresCountTheMultiplierAndBenchShowsItsOwnPoints() throws {
+        let picks = try Self.picks()
+        let live = LivePoints(gameweek: 9, elements: [
+            LiveElement(id: 30, totalPoints: 8, minutes: 90),   // triple captain
+            LiveElement(id: 1, totalPoints: 2, minutes: 90),
+            LiveElement(id: 2, totalPoints: 3, minutes: 90),    // bench, multiplier 0
+            LiveElement(id: 11, totalPoints: nil, minutes: nil),
+        ], fixtures: [])
+        func score(_ element: Int) -> PickScore? {
+            live.score(for: try! #require(picks.picks.first { $0.element == element }), team: 5)
+        }
+        #expect(score(30) == .points(24))
+        #expect(score(1) == .points(2))
+        #expect(score(2) == .points(3))
+        // Null points are unknown, not 0.
+        #expect(score(11) == nil)
+    }
+
+    @Test func playersWhoseMatchHasntStartedAreYetToPlay() throws {
+        let pick = ManagerPicks.Pick(element: 1, position: 1, multiplier: 1)
+        let fixtures = [Self.fixture(1, event: 9, home: 5, away: 6), Self.fixture(2, event: 10, home: 7, away: 8)]
+        let notStarted = LivePoints(gameweek: 9, elements: [LiveElement(id: 1, totalPoints: 0, minutes: 0)], fixtures: fixtures)
+        #expect(notStarted.score(for: pick, team: 6) == .yetToPlay)
+        // His team's only match next gameweek doesn't count.
+        #expect(notStarted.score(for: pick, team: 7) == .points(0))
+        // A double where he's played the first match: points so far.
+        let doubleHalfPlayed = LivePoints(gameweek: 9, elements: [LiveElement(id: 1, totalPoints: 6, minutes: 90)], fixtures: fixtures)
+        #expect(doubleHalfPlayed.score(for: pick, team: 5) == .points(6))
+        // Before the gameweek the live list is empty.
+        let beforeKickoff = LivePoints(gameweek: 9, elements: [], fixtures: fixtures)
+        #expect(beforeKickoff.score(for: pick, team: 5) == .yetToPlay)
+        // Without fixtures nobody is marked yet to play.
+        let noFixtures = LivePoints(gameweek: 9, elements: [LiveElement(id: 1, totalPoints: 0, minutes: 0)], fixtures: nil)
+        #expect(noFixtures.score(for: pick, team: 6) == .points(0))
+    }
+
     @Test func squadStateKeepsASquadOnScreenWhenARefreshFails() throws {
         let picks = try Self.picks()
         let down: Result<ManagerPicks, Error> = .failure(FPLAPIClient.APIError.dataUnavailable("FPL is unavailable right now"))
@@ -781,5 +830,93 @@ struct PicksTests {
         #expect(SquadState(down, playersLoaded: true, previous: .loading) == .failed)
         #expect(SquadState(down, playersLoaded: true, previous: .loaded(picks)) == .loaded(picks))
         #expect(SquadState(missing, playersLoaded: true, previous: .loaded(picks)) == .none)
+    }
+}
+
+/// Answers requests from `StubURLProtocol.responses` by path, after `delay`, so
+/// a test can cancel a load while its requests are still in flight. Used only
+/// through `session`, never registered globally.
+final class StubURLProtocol: URLProtocol {
+    nonisolated(unsafe) static var responses: [String: (status: Int, body: String)] = [:]
+    nonisolated(unsafe) static var delay: TimeInterval = 0
+
+    static var session: URLSession {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [StubURLProtocol.self]
+        return URLSession(configuration: configuration)
+    }
+
+    private var stopped = false
+
+    override class func canInit(with request: URLRequest) -> Bool { true }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+
+    override func startLoading() {
+        DispatchQueue.global().asyncAfter(deadline: .now() + Self.delay) { [self] in
+            guard !stopped, let url = request.url else { return }
+            let stub = Self.responses[url.path] ?? (404, #"{"detail": "Not found"}"#)
+            let response = HTTPURLResponse(url: url, statusCode: stub.status, httpVersion: nil, headerFields: nil)!
+            client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+            client?.urlProtocol(self, didLoad: Data(stub.body.utf8))
+            client?.urlProtocolDidFinishLoading(self)
+        }
+    }
+
+    override func stopLoading() { stopped = true }
+}
+
+@MainActor @Suite(.serialized)
+struct EarlierSquadTests {
+    func store() throws -> (LinkedTeamStore, UserDefaults, String) {
+        let suite = "FPLTests.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        let client = FPLAPIClient(baseURL: URL(string: "https://stub.test/api")!, session: StubURLProtocol.session)
+        let store = LinkedTeamStore(defaults: defaults, client: client)
+        store.link(try ManagerTests.manager())
+        return (store, defaults, suite)
+    }
+
+    func stubSquad(managerID: Int) {
+        StubURLProtocol.responses = [
+            "/api/managers/\(managerID)/picks": (200, PicksTests.json),
+            "/api/events/8/live": (200, #"[{"id": 30, "total_points": 8, "minutes": 90}]"#),
+            "/api/elements": (200, "[]"),
+        ]
+    }
+
+    @Test func aCancelledLoadDoesNotShowRetry() async throws {
+        let (store, defaults, suite) = try store()
+        defer { defaults.removePersistentDomain(forName: suite) }
+        stubSquad(managerID: try #require(store.linked?.id))
+        StubURLProtocol.delay = 0.5
+
+        // Stepping past gameweek 8 before it loads cancels its task.
+        let load = Task { await store.loadSquad(gameweek: 8) }
+        try await Task.sleep(for: .milliseconds(50))
+        load.cancel()
+        await load.value
+        #expect(store.earlierSquads[8] == .loading)
+        #expect(store.earlierPoints[8] == nil)
+
+        // Coming back to it loads it.
+        StubURLProtocol.delay = 0
+        await store.loadSquad(gameweek: 8)
+        #expect(store.earlierSquads[8] == .loaded(try PicksTests.picks()))
+        #expect(store.earlierPoints[8]?.points == [30: 8])
+    }
+
+    @Test func aFailedLoadShowsRetryAndA404ShowsNoSquad() async throws {
+        let (store, defaults, suite) = try store()
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let id = try #require(store.linked?.id)
+        StubURLProtocol.delay = 0
+
+        StubURLProtocol.responses = ["/api/managers/\(id)/picks": (503, #"{"detail": "FPL is unavailable right now"}"#)]
+        await store.loadSquad(gameweek: 8)
+        #expect(store.earlierSquads[8] == .failed)
+
+        StubURLProtocol.responses = [:]
+        await store.loadSquad(gameweek: 2)
+        #expect(store.earlierSquads[2] == SquadState.none)
     }
 }

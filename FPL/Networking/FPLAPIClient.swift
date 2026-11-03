@@ -7,8 +7,18 @@ import Foundation
 
 /// Client for the fplAPI backend, all routes under `/api`.
 struct FPLAPIClient {
-    /// Production fplAPI on Vercel. For a local backend, use `http://127.0.0.1:5000/api`.
-    var baseURL: URL = URL(string: "https://fpl-api-six.vercel.app/api")!
+    /// From the `FPL_API_BASE_URL` build setting (via `FPLAPIBaseURL` in Info.plist):
+    /// production fplAPI on Vercel in Release, and in Debug production or, while an
+    /// app story waits on an unmerged backend PR, that PR's Vercel preview. For a local backend, use `http://127.0.0.1:5000/api`.
+    var baseURL: URL = Self.configuredBaseURL
+
+    static let productionBaseURL = URL(string: "https://fpl-api-six.vercel.app/api")!
+
+    /// Falls back to production if the setting is missing or isn't a URL.
+    static var configuredBaseURL: URL {
+        (Bundle.main.object(forInfoDictionaryKey: "FPLAPIBaseURL") as? String)
+            .flatMap { $0.isEmpty ? nil : URL(string: $0) } ?? productionBaseURL
+    }
     var session: URLSession = .shared
 
     enum APIError: LocalizedError {
@@ -79,10 +89,18 @@ struct FPLAPIClient {
         try await get("managers/\(managerID)/history")
     }
 
-    /// `GET /api/managers/{id}/picks`: the squad as of the latest deadline. 404 before
-    /// the manager's first deadline; 503 when FPL is down or updating.
-    func picks(managerID: Int) async throws -> ManagerPicks {
-        try await get("managers/\(managerID)/picks")
+    /// `GET /api/managers/{id}/picks?event={gw}`: the squad as of the latest deadline,
+    /// or for `gameweek`. 404 before the manager's first deadline or for a gameweek
+    /// before they joined; 503 when FPL is down or updating.
+    func picks(managerID: Int, gameweek: Int? = nil) async throws -> ManagerPicks {
+        try await get("managers/\(managerID)/picks",
+                      query: gameweek.map { [URLQueryItem(name: "event", value: "\($0)")] } ?? [])
+    }
+
+    /// `GET /api/events/{gw}/live`: every player's points and minutes in a gameweek,
+    /// summed across both matches in a double. Empty before the gameweek starts.
+    func livePoints(gameweek: Int) async throws -> [LiveElement] {
+        try await get("events/\(gameweek)/live")
     }
 
     /// `GET /api/events`: every gameweek of the season.
