@@ -318,3 +318,60 @@ private struct StatSection: View {
             .gridColumnAlignment(.trailing)
     }
 }
+
+// MARK: - Presenting
+
+extension View {
+    /// The stats popover for `element`, with its note button: tapping it closes
+    /// the popover and opens the note editor for the current gameweek with the
+    /// player linked. Used by the Players list and Profile's squad.
+    func statsPopover(isPresented: Binding<Bool>, element: Element, team: Team?,
+                      fixtures: [GameweekFixtures], teams: [Int: Team],
+                      arrowEdge: Edge = .leading) -> some View {
+        modifier(StatsPopover(isPresented: isPresented, element: element, team: team,
+                              fixtures: fixtures, teams: teams, arrowEdge: arrowEdge))
+    }
+}
+
+private struct StatsPopover: ViewModifier {
+    @Binding var isPresented: Bool
+    let element: Element
+    let team: Team?
+    let fixtures: [GameweekFixtures]
+    let teams: [Int: Team]
+    let arrowEdge: Edge
+
+    /// Passed into the popover explicitly: its content doesn't reliably inherit
+    /// the model container, so its transfer-note @Query came back empty.
+    @Environment(\.modelContext) private var modelContext
+    /// For the popover's transfer section.
+    @EnvironmentObject private var linkedTeam: LinkedTeamStore
+    /// Set by the popover's note button; the editor opens once the popover has closed.
+    @State private var noteRequested = false
+    @State private var showingNoteEditor = false
+
+    func body(content: Content) -> some View {
+        content
+            .popover(isPresented: $isPresented, arrowEdge: arrowEdge) {
+                ElementStatsView(element: element, team: team, fixtures: fixtures, teams: teams,
+                                 transfers: linkedTeam.transferHistory) {
+                    noteRequested = true
+                    isPresented = false
+                }
+                .modelContext(modelContext)
+                .presentationBackground(Theme.surface)
+                // Show as a popover bubble on iPhone instead of a full sheet.
+                .presentationCompactAdaptation(.popover)
+            }
+            // A sheet can't open while the popover is still on screen, so wait
+            // for it to close before showing the note editor.
+            .onChange(of: isPresented) { _, isShowing in
+                guard !isShowing, noteRequested else { return }
+                noteRequested = false
+                showingNoteEditor = true
+            }
+            .sheet(isPresented: $showingNoteEditor) {
+                NoteEditorView(players: [NotePlayer(id: element.id, webName: element.webName)])
+            }
+    }
+}
