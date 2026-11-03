@@ -81,6 +81,22 @@ extension Color {
             blue: Double(hex & 0xFF) / 255
         )
     }
+
+    /// "#EF0107" (or without the #, any case). Nil for nil or anything else.
+    init?(hexString: String?) {
+        guard let value = UInt32(hexValue: hexString) else { return nil }
+        self.init(hex: value)
+    }
+}
+
+extension UInt32 {
+    /// Parses "#RRGGBB" or "RRGGBB"; nil for any other shape.
+    init?(hexValue string: String?) {
+        guard var string = string?.trimmingCharacters(in: .whitespaces) else { return nil }
+        if string.hasPrefix("#") { string.removeFirst() }
+        guard string.count == 6, string.allSatisfy(\.isHexDigit), let value = UInt32(string, radix: 16) else { return nil }
+        self = value
+    }
 }
 
 extension View {
