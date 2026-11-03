@@ -758,4 +758,16 @@ struct PicksTests {
         #expect(badges[1] == .some(nil))
         #expect(picks.subbedIn == [12] && picks.subbedOut == [10])
     }
+
+    @Test func squadStateKeepsASquadOnScreenWhenARefreshFails() throws {
+        let picks = try Self.picks()
+        let down: Result<ManagerPicks, Error> = .failure(FPLAPIClient.APIError.dataUnavailable("FPL is unavailable right now"))
+        let missing: Result<ManagerPicks, Error> = .failure(FPLAPIClient.APIError.notFound("Manager not found"))
+
+        #expect(SquadState(.success(picks), playersLoaded: true, previous: .loading) == .loaded(picks))
+        #expect(SquadState(.success(picks), playersLoaded: false, previous: .loading) == .failed)
+        #expect(SquadState(down, playersLoaded: true, previous: .loading) == .failed)
+        #expect(SquadState(down, playersLoaded: true, previous: .loaded(picks)) == .loaded(picks))
+        #expect(SquadState(missing, playersLoaded: true, previous: .loaded(picks)) == .none)
+    }
 }
