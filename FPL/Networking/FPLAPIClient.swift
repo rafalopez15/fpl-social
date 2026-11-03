@@ -8,8 +8,8 @@ import Foundation
 /// Client for the fplAPI backend, all routes under `/api`.
 struct FPLAPIClient {
     /// From the `FPL_API_BASE_URL` build setting (via `FPLAPIBaseURL` in Info.plist):
-    /// production fplAPI on Vercel in Release, and in Debug either production or
-    /// a backend PR's Vercel preview. For a local backend, use `http://127.0.0.1:5000/api`.
+    /// production fplAPI on Vercel in Release, and in Debug production or, while an
+    /// app story waits on an unmerged backend PR, that PR's Vercel preview. For a local backend, use `http://127.0.0.1:5000/api`.
     var baseURL: URL = Self.configuredBaseURL
 
     static let productionBaseURL = URL(string: "https://fpl-api-six.vercel.app/api")!
