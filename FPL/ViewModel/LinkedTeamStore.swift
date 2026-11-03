@@ -24,6 +24,9 @@ final class LinkedTeamStore: ObservableObject {
     @Published private(set) var transferHistoryFailed = false
     /// The squad as of the latest deadline, for Profile.
     @Published private(set) var squad: SquadState = .loading
+    /// Points in the squad's gameweek, from `/events/{gw}/live`. Nil until loaded
+    /// or when it failed, and the squad then shows without points.
+    @Published private(set) var livePoints: LivePoints?
     /// Players by id from the last `/elements` load: names for transfers, and the
     /// squad's rows and stats popovers.
     @Published private(set) var players: [Int: Element] = [:]
@@ -67,6 +70,7 @@ final class LinkedTeamStore: ObservableObject {
         freeTransfers = nil
         history = nil
         squad = .loading
+        livePoints = nil
     }
 
     func unlink() {
@@ -78,6 +82,7 @@ final class LinkedTeamStore: ObservableObject {
         freeTransfers = nil
         history = nil
         squad = .loading
+        livePoints = nil
         defaults.removeObject(forKey: Self.key)
         defaults.removeObject(forKey: Self.seenKey)
     }
@@ -130,8 +135,12 @@ final class LinkedTeamStore: ObservableObject {
         }
 
         let squadPicks = try? picks.get()
+        // The gameweek the picks came back with, so points always match the squad.
+        let gameweek = squadPicks?.entryHistory?.event
+        async let live = fetchLivePoints(gameweek: gameweek)
         let ids = Transfer.players(in: transfers ?? []) + (squadPicks?.picks.map(\.element) ?? [])
         let playersLoaded = await loadPlayers(ids)
+        let fetchedLive = await live
         guard linked?.id == id else { return }
 
         if let transfers, playersLoaded {
@@ -142,6 +151,22 @@ final class LinkedTeamStore: ObservableObject {
         }
 
         squad = SquadState(picks, playersLoaded: playersLoaded, previous: squad)
+        // A failed call keeps points already shown for the same gameweek.
+        if let fetchedLive {
+            livePoints = fetchedLive
+        } else if livePoints?.gameweek != gameweek {
+            livePoints = nil
+        }
+    }
+
+    /// Nil without a gameweek or if the live call fails. Fixtures failing only
+    /// means nobody shows as yet to play.
+    private func fetchLivePoints(gameweek: Int?) async -> LivePoints? {
+        guard let gameweek else { return nil }
+        async let elements = client.livePoints(gameweek: gameweek)
+        async let fixtures = client.upcomingFixtures()
+        guard let elements = try? await elements else { return nil }
+        return LivePoints(gameweek: gameweek, elements: elements, fixtures: try? await fixtures)
     }
 
     private func fetchPicks(managerID: Int) async -> Result<ManagerPicks, Error> {

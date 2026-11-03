@@ -95,6 +95,12 @@ struct FPLAPIClient {
         try await get("managers/\(managerID)/picks")
     }
 
+    /// `GET /api/events/{gw}/live`: every player's points and minutes in a gameweek,
+    /// summed across both matches in a double. Empty before the gameweek starts.
+    func livePoints(gameweek: Int) async throws -> [LiveElement] {
+        try await get("events/\(gameweek)/live")
+    }
+
     /// `GET /api/events`: every gameweek of the season.
     func events() async throws -> [Event] {
         try await get("events")

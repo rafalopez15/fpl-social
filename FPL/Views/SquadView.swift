@@ -11,6 +11,8 @@ import SwiftUI
 struct SquadSection: View {
     let state: SquadState
     let players: [Int: Element]
+    /// Each player's points; nil shows the squad without them.
+    let livePoints: LivePoints?
     let onRetry: () -> Void
 
     @StateObject private var lookups = TeamsAndFixturesStore()
@@ -26,7 +28,7 @@ struct SquadSection: View {
             case .loading:
                 SquadPlaceholder()
             case .loaded(let picks):
-                SquadCard(picks: picks, players: players, lookups: lookups)
+                SquadCard(picks: picks, players: players, livePoints: livePoints, lookups: lookups)
                 // FPL publishes picks at the deadline, so newer transfers aren't in them yet.
                 Text("Updates at each deadline, so transfers made since the last one aren't shown yet.")
                     .font(.footnote)
@@ -58,6 +60,7 @@ struct SquadSection: View {
 private struct SquadCard: View {
     let picks: ManagerPicks
     let players: [Int: Element]
+    let livePoints: LivePoints?
     @ObservedObject var lookups: TeamsAndFixturesStore
     /// At accessibility text sizes the pitch's cards can't fit, so the squad shows as a list.
     @Environment(\.dynamicTypeSize) private var typeSize
@@ -77,7 +80,7 @@ private struct SquadCard: View {
                     group("BENCH", picks.bench)
                 }
             } else {
-                SquadPitch(picks: picks, players: players, lookups: lookups)
+                SquadPitch(picks: picks, players: players, livePoints: livePoints, lookups: lookups)
                     // Into the card's padding: a 5-man midfield needs the width.
                     .padding(.horizontal, -8)
             }
@@ -136,7 +139,8 @@ private struct SquadCard: View {
                              subbedIn: self.picks.subbedIn.contains(pick.element),
                              subbedOut: self.picks.subbedOut.contains(pick.element),
                              fixtures: lookups.schedule?.upcoming(for: element.team) ?? [],
-                             teams: lookups.teams)
+                             teams: lookups.teams,
+                             score: livePoints?.score(for: pick, team: element.team))
                 }
             }
         }
@@ -159,6 +163,7 @@ private struct SquadRow: View {
     let subbedOut: Bool
     let fixtures: [GameweekFixtures]
     let teams: [Int: Team]
+    let score: PickScore?
 
     @State private var showingStats = false
 
@@ -208,6 +213,12 @@ private struct SquadRow: View {
                 } else if subbedOut {
                     subLabel("Subbed out", systemImage: "arrow.down.circle.fill", color: Theme.danger)
                 }
+
+                if let score {
+                    Text(score.text)
+                        .font(.headline)
+                        .monospacedDigit()
+                }
             }
             .frame(minHeight: 44)
             .contentShape(Rectangle())
@@ -225,7 +236,7 @@ private struct SquadRow: View {
             .foregroundStyle(color)
     }
 
-    /// e.g. "Haaland, Man City, captain, subbed in, 75% chance of playing"
+    /// e.g. "Haaland, Man City, captain, 16 points, subbed in, 75% chance of playing"
     private var accessibilityLabel: String {
         var parts = [element.webName]
         if let team { parts.append(team.name) }
@@ -235,6 +246,7 @@ private struct SquadRow: View {
         case "V": parts.append("vice-captain")
         default: break
         }
+        if let score { parts.append(score.accessibilityDescription) }
         if subbedIn { parts.append("subbed in") }
         if subbedOut { parts.append("subbed out") }
         if element.availabilityFlag != nil { parts.append(element.availabilityDescription) }

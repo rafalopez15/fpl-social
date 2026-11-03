@@ -771,6 +771,55 @@ struct PicksTests {
         #expect(picks.subbedIn == [12] && picks.subbedOut == [10])
     }
 
+    static func fixture(_ id: Int, event: Int, home: Int, away: Int, started: Bool = false) -> Fixture {
+        Fixture(id: id, event: event, teamH: home, teamA: away, teamHDifficulty: 3, teamADifficulty: 3,
+                kickoffTime: nil, started: started, finished: false, teamHScore: nil, teamAScore: nil)
+    }
+
+    @Test func decodesLivePointsWithNulls() throws {
+        let data = Data(#"[{"id": 1, "total_points": 5, "minutes": 90}, {"id": 2, "total_points": null, "minutes": null}]"#.utf8)
+        let elements = try JSONDecoder.fplAPI.decode([LiveElement].self, from: data)
+        #expect(elements == [LiveElement(id: 1, totalPoints: 5, minutes: 90), LiveElement(id: 2)])
+        let live = LivePoints(gameweek: 9, elements: elements, fixtures: nil)
+        #expect(live.points == [1: 5] && live.minutes == [1: 90])
+    }
+
+    @Test func scoresCountTheMultiplierAndBenchShowsItsOwnPoints() throws {
+        let picks = try Self.picks()
+        let live = LivePoints(gameweek: 9, elements: [
+            LiveElement(id: 30, totalPoints: 8, minutes: 90),   // triple captain
+            LiveElement(id: 1, totalPoints: 2, minutes: 90),
+            LiveElement(id: 2, totalPoints: 3, minutes: 90),    // bench, multiplier 0
+            LiveElement(id: 11, totalPoints: nil, minutes: nil),
+        ], fixtures: [])
+        func score(_ element: Int) -> PickScore? {
+            live.score(for: try! #require(picks.picks.first { $0.element == element }), team: 5)
+        }
+        #expect(score(30) == .points(24))
+        #expect(score(1) == .points(2))
+        #expect(score(2) == .points(3))
+        // Null points are unknown, not 0.
+        #expect(score(11) == nil)
+    }
+
+    @Test func playersWhoseMatchHasntStartedAreYetToPlay() throws {
+        let pick = ManagerPicks.Pick(element: 1, position: 1, multiplier: 1)
+        let fixtures = [Self.fixture(1, event: 9, home: 5, away: 6), Self.fixture(2, event: 10, home: 7, away: 8)]
+        let notStarted = LivePoints(gameweek: 9, elements: [LiveElement(id: 1, totalPoints: 0, minutes: 0)], fixtures: fixtures)
+        #expect(notStarted.score(for: pick, team: 6) == .yetToPlay)
+        // His team's only match next gameweek doesn't count.
+        #expect(notStarted.score(for: pick, team: 7) == .points(0))
+        // A double where he's played the first match: points so far.
+        let doubleHalfPlayed = LivePoints(gameweek: 9, elements: [LiveElement(id: 1, totalPoints: 6, minutes: 90)], fixtures: fixtures)
+        #expect(doubleHalfPlayed.score(for: pick, team: 5) == .points(6))
+        // Before the gameweek the live list is empty.
+        let beforeKickoff = LivePoints(gameweek: 9, elements: [], fixtures: fixtures)
+        #expect(beforeKickoff.score(for: pick, team: 5) == .yetToPlay)
+        // Without fixtures nobody is marked yet to play.
+        let noFixtures = LivePoints(gameweek: 9, elements: [LiveElement(id: 1, totalPoints: 0, minutes: 0)], fixtures: nil)
+        #expect(noFixtures.score(for: pick, team: 6) == .points(0))
+    }
+
     @Test func squadStateKeepsASquadOnScreenWhenARefreshFails() throws {
         let picks = try Self.picks()
         let down: Result<ManagerPicks, Error> = .failure(FPLAPIClient.APIError.dataUnavailable("FPL is unavailable right now"))

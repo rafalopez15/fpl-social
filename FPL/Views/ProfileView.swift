@@ -26,7 +26,8 @@ struct ProfileView: View {
                             confirmingUnlink = true
                         }
 
-                        SquadSection(state: teamStore.squad, players: teamStore.players) {
+                        SquadSection(state: teamStore.squad, players: teamStore.players,
+                                     livePoints: teamStore.livePoints) {
                             Task { await teamStore.refresh() }
                         }
 

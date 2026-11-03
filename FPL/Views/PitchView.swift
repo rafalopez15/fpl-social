@@ -11,6 +11,7 @@ import SwiftUI
 struct SquadPitch: View {
     let picks: ManagerPicks
     let players: [Int: Element]
+    let livePoints: LivePoints?
     @ObservedObject var lookups: TeamsAndFixturesStore
 
     var body: some View {
@@ -69,14 +70,16 @@ struct SquadPitch: View {
                             teams: lookups.teams,
                             subbedIn: picks.subbedIn.contains(pick.element),
                             subbedOut: picks.subbedOut.contains(pick.element),
+                            score: livePoints?.score(for: pick, team: element.team),
                             benchLabel: benchLabel)
         }
     }
 }
 
 /// One player: a grey shirt (club colors wait for FPL-38), the name on a navy
-/// plate, and the next fixture colored by difficulty. Captain badge top left;
-/// an automatic sub or an injury flag top right.
+/// plate, and his gameweek points (or the next fixture colored by difficulty
+/// when points couldn't load). Captain badge top left; an automatic sub or an
+/// injury flag top right.
 private struct PitchPlayerCard: View {
     let pick: ManagerPicks.Pick
     let element: Element
@@ -86,6 +89,8 @@ private struct PitchPlayerCard: View {
     let teams: [Int: Team]
     let subbedIn: Bool
     let subbedOut: Bool
+    /// Points this gameweek, or "–" yet to play. Nil shows the next fixture instead.
+    let score: PickScore?
     /// "bench 2" etc. for VoiceOver, nil for starters.
     let benchLabel: String?
 
@@ -118,7 +123,11 @@ private struct PitchPlayerCard: View {
                     .frame(maxWidth: .infinity)
                     .background(Theme.background)
 
-                fixtureLine
+                if let score {
+                    pointsLine(score)
+                } else {
+                    fixtureLine
+                }
             }
             .frame(maxWidth: 74)
             .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
@@ -139,6 +148,17 @@ private struct PitchPlayerCard: View {
         .accessibilityLabel(accessibilityLabel)
         .accessibilityHint("Shows stats and news")
         .accessibilityAddTraits(.isButton)
+    }
+
+    /// "12", or "–" while yet to play. Captain points are already doubled.
+    private func pointsLine(_ score: PickScore) -> some View {
+        Text(score.text)
+            .font(.caption.weight(.bold))
+            .monospacedDigit()
+            .foregroundStyle(Theme.text)
+            .padding(.vertical, 2)
+            .frame(maxWidth: .infinity)
+            .background(Theme.surface)
     }
 
     /// "NFO (A)" on its difficulty color, "NFO +1" for a double, "–" for a blank.
@@ -196,8 +216,8 @@ private struct PitchPlayerCard: View {
             .padding(4)
     }
 
-    /// e.g. "Haaland, Man City, forward, captain, next Nottingham Forest away,
-    /// difficulty 3, subbed in, 75% chance of playing"
+    /// e.g. "Haaland, Man City, forward, captain, 16 points, subbed in, 75% chance
+    /// of playing". Without points, the next fixture: "next Nottingham Forest away, difficulty 3".
     private var accessibilityLabel: String {
         var parts = [element.webName]
         if let team { parts.append(team.name) }
@@ -212,7 +232,9 @@ private struct PitchPlayerCard: View {
         case "V": parts.append("vice-captain")
         default: break
         }
-        if let fixtures = next?.fixtures, !fixtures.isEmpty {
+        if let score {
+            parts.append(score.accessibilityDescription)
+        } else if let fixtures = next?.fixtures, !fixtures.isEmpty {
             let games = fixtures.map { fixture in
                 let name = teams[fixture.opponent]?.name ?? "unknown team"
                 return "\(name) \(fixture.isHome ? "home" : "away"), difficulty \(fixture.difficulty)"

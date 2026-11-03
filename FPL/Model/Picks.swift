@@ -92,3 +92,67 @@ struct ManagerPicks: Decodable, Equatable {
         var pointsOnBench: Int? = nil
     }
 }
+
+/// One player's gameweek from `GET /api/events/{gw}/live`. Nulls mean unknown, not 0.
+struct LiveElement: Decodable, Equatable {
+    /// `Element.id`.
+    let id: Int
+    /// Summed across both matches in a double gameweek.
+    var totalPoints: Int? = nil
+    var minutes: Int? = nil
+}
+
+/// Each player's points in the squad's gameweek, for the squad's cards.
+struct LivePoints: Equatable {
+    let gameweek: Int
+    /// By `Element.id`. Players FPL sent null for are missing (unknown).
+    let points: [Int: Int]
+    let minutes: [Int: Int]
+    /// Teams with a match this gameweek that hasn't kicked off. Nil when
+    /// fixtures couldn't load, so nobody shows as yet to play.
+    let teamsYetToPlay: Set<Int>?
+
+    /// - Parameter fixtures: Matches not started yet (`/fixtures?started=false`), or nil if they failed.
+    init(gameweek: Int, elements: [LiveElement], fixtures: [Fixture]?) {
+        self.gameweek = gameweek
+        points = Dictionary(elements.compactMap { e in e.totalPoints.map { (e.id, $0) } }, uniquingKeysWith: { a, _ in a })
+        minutes = Dictionary(elements.compactMap { e in e.minutes.map { (e.id, $0) } }, uniquingKeysWith: { a, _ in a })
+        teamsYetToPlay = fixtures.map { fixtures in
+            Set(fixtures.filter { $0.event == gameweek && !$0.started }.flatMap { [$0.teamH, $0.teamA] })
+        }
+    }
+
+    /// What a pick's card shows. `team` is the player's `Element.team`.
+    ///
+    /// "Yet to play" when his team still has a match this gameweek and he has no
+    /// minutes: FPL's 0 minutes looks the same before and after a match. In a
+    /// double where he played the first match, his points so far show instead.
+    func score(for pick: ManagerPicks.Pick, team: Int?) -> PickScore? {
+        if let team, teamsYetToPlay?.contains(team) == true, (minutes[pick.element] ?? 0) == 0 {
+            return .yetToPlay
+        }
+        return pick.points(from: points[pick.element]).map(PickScore.points)
+    }
+}
+
+/// A squad card's points: as they count for the team (captain doubled), or "–".
+enum PickScore: Equatable {
+    case points(Int)
+    case yetToPlay
+
+    /// "12" or "–"
+    var text: String {
+        switch self {
+        case .points(let points): "\(points)"
+        case .yetToPlay: "–"
+        }
+    }
+
+    /// "12 points" or "yet to play"
+    var accessibilityDescription: String {
+        switch self {
+        case .points(let points): points == 1 ? "1 point" : "\(points) points"
+        case .yetToPlay: "yet to play"
+        }
+    }
+}
