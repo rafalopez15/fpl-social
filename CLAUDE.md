@@ -88,6 +88,7 @@ FPL/
     SquadView.swift             Profile's "Your squad" section, its states, and the list used at accessibility text sizes
     PitchView.swift             The squad on a drawn pitch: player cards, the bench strip, PitchBackground
     ElementStatsView.swift      Stats popover content, and statsPopover(...) which presents it with the note flow
+    PlayerNotesView.swift       Every note about one player, from the popover's "All notes about …" row
 FPLTests/FPLTests.swift         Swift Testing: decoding and sort tests
 ```
 
@@ -115,6 +116,7 @@ Notes (FPL-10) are personal and stored on the device with SwiftData. `ContentVie
 - **Notes from past gameweeks are read-only** (`Note.isLocked`): they open with the text, chips without ×, a lock line and only a Done button, so your reasoning at the time can't be rewritten. That includes a note just added to an earlier gameweek; the editor warns "can't be edited after saving" before you save one. Notes from the current gameweek, with no gameweek, or while the current gameweek is unknown stay editable. Swipe to delete works on every note, past ones included, since it's the only fix for a mistake in a locked note. Deleting shows a "Note deleted · Undo" toast above the tab bar for 5 seconds (and a VoiceOver announcement); Undo re-inserts a copy (`DeletedNote`) with the same gameweek, dates, text and players. The user preferred undo over a confirmation alert.
 - Linked players are stored as `NotePlayer` (id plus `webName`), so notes show names without loading the player list.
 - Notes are written from a gameweek's `+` on the Notes tab, from a transfer on Profile, or from the stats popover's `square.and.pencil` button, which writes one for the current gameweek and links that player. The popover closes first and the editor sheet opens in `onChange(of:)`, because a sheet can't present while the popover is up. `statsPopover(isPresented:element:...)` (ElementStatsView.swift) wraps the popover, that note flow and the model context, so the Players list and Profile's squad open the same popover (the squad passes `showsStats: false`); use it for any new place that shows a player.
+- The popover's "All notes about Rogers (3)" row (FPL-34), below the transfer section and hidden when there are none, opens `PlayerNotesView`: every note about that player, grouped by gameweek, newest first, with the same `NoteRow`s, swipe to delete and undo toast as the Notes tab, and a lock on past gameweeks' headers. Tapping a note opens it in the editor (read-only when locked). A note is about a player when he's linked to it or is the player in or out of its transfer (`Note.isAbout`); mentions in the text alone don't count. It opens after the popover closes, like the note button. There's no player filter on the Notes tab itself: the user prefers fewer controls.
 - There's no player picker in the editor yet; players can only be linked from the popover, and unlinked with the chip's ×.
 
 ## Linked FPL team
