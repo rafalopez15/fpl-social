@@ -174,7 +174,7 @@ private struct SquadRow: View {
                     // Anchored on the icon, as on the Players tab, so iOS can place
                     // the popover beside the row wherever it fits on screen.
                     .statsPopover(isPresented: $showingStats, element: element, team: team,
-                                  fixtures: fixtures, teams: teams)
+                                  fixtures: fixtures, teams: teams, showsStats: false)
 
                 HStack(alignment: .firstTextBaseline, spacing: 6) {
                     if let flag = element.availabilityFlag {

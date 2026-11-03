@@ -132,7 +132,8 @@ private struct PitchPlayerCard: View {
             return proxy.frame(in: .scrollView).midY < height / 2
         } action: { inUpperHalf = $0 }
         .statsPopover(isPresented: $showingStats, element: element, team: team,
-                      fixtures: fixtures, teams: teams, arrowEdge: inUpperHalf ? .top : .bottom)
+                      fixtures: fixtures, teams: teams, showsStats: false,
+                      arrowEdge: inUpperHalf ? .top : .bottom)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(accessibilityLabel)
         .accessibilityHint("Shows stats and news")
