@@ -135,6 +135,16 @@ extension Element {
             case .forward: "Forward"
             }
         }
+
+        /// FPL's abbreviation, e.g. on the squad's bench.
+        var shortTitle: String {
+            switch self {
+            case .goalkeeper: "GKP"
+            case .defender: "DEF"
+            case .midfielder: "MID"
+            case .forward: "FWD"
+            }
+        }
     }
 
     var position: Position? { Position(rawValue: elementType) }

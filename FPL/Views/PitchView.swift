@@ -37,12 +37,13 @@ struct SquadPitch: View {
         .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 
-    /// The bench in substitution order: the backup goalkeeper, then 1, 2, 3.
+    /// The bench in substitution order, each labelled with its position (GKP,
+    /// DEF, MID, FWD). VoiceOver still reads the order: "bench 1" etc.
     private var bench: some View {
         HStack(alignment: .top, spacing: 4) {
             ForEach(Array(picks.bench.enumerated()), id: \.element.id) { index, pick in
                 VStack(spacing: 4) {
-                    Text(index == 0 ? "GKP" : "\(index)")
+                    Text(players[pick.element]?.position?.shortTitle ?? "")
                         .font(.caption2.weight(.semibold))
                         .foregroundStyle(.secondary)
                         .accessibilityHidden(true)

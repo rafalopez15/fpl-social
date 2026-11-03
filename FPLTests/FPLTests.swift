@@ -748,6 +748,7 @@ struct PicksTests {
         #expect(lines.map(\.position) == [.goalkeeper, .defender, .midfielder, .forward])
         #expect(lines[1].picks.map(\.element) == [10, 11])
         #expect(picks.bench.map(\.element) == [2, 12])
+        #expect(Element.Position.allCases.map(\.shortTitle) == ["GKP", "DEF", "MID", "FWD"])
     }
 
     @Test func badgesAndAutomaticSubs() throws {
