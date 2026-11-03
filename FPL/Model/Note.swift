@@ -43,6 +43,14 @@ extension Note {
         return gameweek < currentGameweek
     }
 
+    /// Whether the note is about a player: he's linked to it, or he's the player
+    /// in or out of its transfer. Mentions in the text alone don't count.
+    func isAbout(_ elementID: Int) -> Bool {
+        players.contains { $0.id == elementID }
+            || transfer?.playerIn.id == elementID
+            || transfer?.playerOut.id == elementID
+    }
+
     /// The transfer note that matters for a player: the latest transfer that
     /// brought him in or sold him. Nil if you haven't transferred him since linking.
     static func latestTransferNote(for elementID: Int, in notes: [Note]) -> (note: Note, broughtIn: Bool)? {

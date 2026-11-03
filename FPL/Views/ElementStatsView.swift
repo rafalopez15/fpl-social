@@ -18,12 +18,16 @@ struct ElementStatsView: View {
     var transfers: [NamedTransfer]? = nil
     /// Shows an "add note" button in the header when set.
     var onAddNote: (() -> Void)? = nil
+    /// Shows an "All notes about …" row, when you have notes about the player.
+    var onShowNotes: (() -> Void)? = nil
     /// False hides the Season and Advanced stats, for Profile's squad, where
     /// the transfer and fixtures are what matter.
     var showsStats = true
 
-    /// For the transfer note section. Few enough to filter in memory.
+    /// For the transfer note section and the notes count. Few enough to filter in memory.
     @Query private var notes: [Note]
+
+    private var noteCount: Int { notes.filter { $0.isAbout(element.id) }.count }
 
     var body: some View {
         // 12pt between blocks, with a hairline between sections so each reads as its own group.
@@ -63,6 +67,11 @@ struct ElementStatsView: View {
             if let latest = Note.latestTransfer(for: element.id, history: transfers, notes: notes) {
                 SectionDivider()
                 TransferSection(latest: latest)
+            }
+
+            if let onShowNotes, noteCount > 0 {
+                SectionDivider()
+                AllNotesRow(name: element.webName, count: noteCount, action: onShowNotes)
             }
 
             if !fixtures.isEmpty {
@@ -275,6 +284,34 @@ private struct TransferSection: View {
     }
 }
 
+/// "All notes about Rogers (3)", opening the list of them.
+private struct AllNotesRow: View {
+    let name: String
+    let count: Int
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack {
+                Label("All notes about \(name) (\(count))", systemImage: "note.text")
+                    .font(.subheadline.weight(.semibold))
+                Spacer(minLength: 8)
+                Image(systemName: "chevron.right")
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .accessibilityHidden(true)
+            }
+            .foregroundStyle(Theme.accent)
+            .frame(minHeight: 44)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        // Sits flush with the sections above and below despite the 44pt target.
+        .padding(.vertical, -8)
+        .accessibilityLabel(count == 1 ? "1 note about \(name)" : "All \(count) notes about \(name)")
+    }
+}
+
 /// A hairline between popover sections.
 private struct SectionDivider: View {
     var body: some View {
@@ -334,7 +371,7 @@ private struct StatSection: View {
 extension View {
     /// The stats popover for `element`, with its note button: tapping it closes
     /// the popover and opens the note editor for the current gameweek with the
-    /// player linked. Used by the Players list and Profile's squad, which passes
+    /// player linked. "All notes about …" opens `PlayerNotesView` the same way. Used by the Players list and Profile's squad, which passes
     /// `showsStats: false` to leave out the season and advanced stats.
     func statsPopover(isPresented: Binding<Bool>, element: Element, team: Team?,
                       fixtures: [GameweekFixtures], teams: [Int: Team],
@@ -359,16 +396,24 @@ private struct StatsPopover: ViewModifier {
     @Environment(\.modelContext) private var modelContext
     /// For the popover's transfer section.
     @EnvironmentObject private var linkedTeam: LinkedTeamStore
-    /// Set by the popover's note button; the editor opens once the popover has closed.
-    @State private var noteRequested = false
+    /// What the popover asked to open; it opens once the popover has closed.
+    @State private var requested: Request?
     @State private var showingNoteEditor = false
+    @State private var showingNotes = false
+
+    private enum Request { case newNote, allNotes }
+
+    private var player: NotePlayer { NotePlayer(id: element.id, webName: element.webName) }
 
     func body(content: Content) -> some View {
         content
             .popover(isPresented: $isPresented, arrowEdge: arrowEdge) {
                 ElementStatsView(element: element, team: team, fixtures: fixtures, teams: teams,
                                  transfers: linkedTeam.transferHistory, onAddNote: {
-                    noteRequested = true
+                    requested = .newNote
+                    isPresented = false
+                }, onShowNotes: {
+                    requested = .allNotes
                     isPresented = false
                 }, showsStats: showsStats)
                 .modelContext(modelContext)
@@ -377,14 +422,20 @@ private struct StatsPopover: ViewModifier {
                 .presentationCompactAdaptation(.popover)
             }
             // A sheet can't open while the popover is still on screen, so wait
-            // for it to close before showing the note editor.
+            // for it to close before showing the note editor or the notes list.
             .onChange(of: isPresented) { _, isShowing in
-                guard !isShowing, noteRequested else { return }
-                noteRequested = false
-                showingNoteEditor = true
+                guard !isShowing, let request = requested else { return }
+                requested = nil
+                switch request {
+                case .newNote: showingNoteEditor = true
+                case .allNotes: showingNotes = true
+                }
             }
             .sheet(isPresented: $showingNoteEditor) {
-                NoteEditorView(players: [NotePlayer(id: element.id, webName: element.webName)])
+                NoteEditorView(players: [player])
+            }
+            .sheet(isPresented: $showingNotes) {
+                PlayerNotesView(player: player)
             }
     }
 }

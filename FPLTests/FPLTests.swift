@@ -529,6 +529,17 @@ struct TransferTests {
                      cost: 86, time: NoteTests.date(day))
     }
 
+    @Test func aNoteIsAboutLinkedPlayersAndBothSidesOfItsTransfer() {
+        let linked = Note(text: "Watch his minutes", gameweek: 9, players: [NotePlayer(id: 7, webName: "Rogers")])
+        let boughtIn = Note(text: "", gameweek: 8, transfer: Self.noteTransfer(7, 2, day: 3))
+        let soldOut = Note(text: "Rotation risk", gameweek: 6, transfer: Self.noteTransfer(3, 7, day: 1))
+        let mentionedOnly = Note(text: "Rogers looked sharp", gameweek: 9, players: [NotePlayer(id: 4, webName: "Saka")])
+        let notes = [linked, boughtIn, soldOut, mentionedOnly]
+        #expect(notes.filter { $0.isAbout(7) }.map(\.gameweek) == [9, 8, 6])
+        #expect(notes.filter { $0.isAbout(4) }.count == 1)
+        #expect(!notes.contains { $0.isAbout(99) })
+    }
+
     @Test func onlyTransfersAfterTheLastCheckAreNewOldestFirst() {
         let transfers = [Self.transfer(3, 4, day: 9), Self.transfer(1, 2, day: 7), Self.transfer(5, 6, day: 3)]
         let new = Transfer.made(after: NoteTests.date(5), in: transfers)

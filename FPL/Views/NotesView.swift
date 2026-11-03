@@ -126,8 +126,8 @@ struct NotesView: View {
     }
 }
 
-/// A bar confirming a delete, with an Undo button.
-private struct UndoToast: View {
+/// A bar confirming a delete, with an Undo button. Also used by `PlayerNotesView`.
+struct UndoToast: View {
     let message: String
     let onUndo: () -> Void
 
@@ -310,7 +310,8 @@ extension GameweekScore {
 
 /// A note in the list: for a transfer note, the transfer first; then up to three
 /// lines of text (or a prompt to write it, if skipped), then players and the date.
-private struct NoteRow: View {
+/// Also used by `PlayerNotesView`.
+struct NoteRow: View {
     let note: Note
 
     var body: some View {
