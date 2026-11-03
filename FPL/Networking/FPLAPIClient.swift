@@ -79,6 +79,12 @@ struct FPLAPIClient {
         try await get("managers/\(managerID)/history")
     }
 
+    /// `GET /api/managers/{id}/picks`: the squad as of the latest deadline. 404 before
+    /// the manager's first deadline; 503 when FPL is down or updating.
+    func picks(managerID: Int) async throws -> ManagerPicks {
+        try await get("managers/\(managerID)/picks")
+    }
+
     /// `GET /api/events`: every gameweek of the season.
     func events() async throws -> [Event] {
         try await get("events")

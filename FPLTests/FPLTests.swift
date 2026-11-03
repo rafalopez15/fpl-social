@@ -696,3 +696,66 @@ struct TransferTests {
         #expect(defaults.object(forKey: "transfersSeenUntil") == nil)
     }
 }
+
+struct PicksTests {
+    /// Trimmed from `/api/managers/{id}/picks` for a Triple Captain gameweek
+    /// with an automatic sub, plus a pick with nulls.
+    static let json = """
+    {
+      "active_chip": "3xc",
+      "picks": [
+        {"element": 30, "position": 9, "multiplier": 3, "is_captain": true, "is_vice_captain": false, "element_type": 4},
+        {"element": 1, "position": 1, "multiplier": 1, "is_captain": false, "is_vice_captain": false, "element_type": 1},
+        {"element": 20, "position": 6, "multiplier": 1, "is_captain": false, "is_vice_captain": true, "element_type": 3},
+        {"element": 10, "position": 2, "multiplier": 1, "is_captain": false, "is_vice_captain": false, "element_type": 2},
+        {"element": 11, "position": 3, "multiplier": null, "is_captain": null, "is_vice_captain": null, "element_type": null},
+        {"element": 2, "position": 12, "multiplier": 0, "is_captain": false, "is_vice_captain": false, "element_type": 1},
+        {"element": 12, "position": 13, "multiplier": 1, "is_captain": false, "is_vice_captain": false, "element_type": 2}
+      ],
+      "automatic_subs": [{"element_in": 12, "element_out": 10, "event": 9}],
+      "entry_history": {"event": 9, "points": 55, "total_points": 563, "bank": 21, "value": 1022, "points_on_bench": 13}
+    }
+    """
+
+    static func picks() throws -> ManagerPicks {
+        try JSONDecoder.fplAPI.decode(ManagerPicks.self, from: Data(json.utf8))
+    }
+
+    @Test func decodesPicksWithNulls() throws {
+        let picks = try Self.picks()
+        #expect(picks.picks.count == 7)
+        #expect(picks.entryHistory == .init(event: 9, points: 55, pointsOnBench: 13))
+        #expect(picks.chipTitle == "Triple Captain")
+        let unknown = try #require(picks.picks.first { $0.element == 11 })
+        #expect(unknown.multiplier == nil && unknown.badge == nil)
+    }
+
+    @Test func onlyElementAndPositionAreRequired() throws {
+        let data = Data(#"{"picks": [{"element": 1, "position": 1}]}"#.utf8)
+        let picks = try JSONDecoder.fplAPI.decode(ManagerPicks.self, from: data)
+        #expect(picks.activeChip == nil && picks.automaticSubs == nil && picks.entryHistory == nil)
+        #expect(picks.chipTitle == nil)
+    }
+
+    @Test func startersGroupByPositionAndBenchKeepsItsOrder() throws {
+        let picks = try Self.picks()
+        // Element 11 has no element_type, so the player list fills it in.
+        var object = try ElementDecodingTests.fixtureObject()
+        object["id"] = 11
+        object["element_type"] = 2
+        let players = [11: try ElementDecodingTests.decode(object)]
+        let lines = picks.startingLines(players: players)
+        #expect(lines.map(\.position) == [.goalkeeper, .defender, .midfielder, .forward])
+        #expect(lines[1].picks.map(\.element) == [10, 11])
+        #expect(picks.bench.map(\.element) == [2, 12])
+    }
+
+    @Test func badgesAndAutomaticSubs() throws {
+        let picks = try Self.picks()
+        let badges = Dictionary(uniqueKeysWithValues: picks.picks.map { ($0.element, $0.badge) })
+        #expect(badges[30] == "TC")
+        #expect(badges[20] == "V")
+        #expect(badges[1] == .some(nil))
+        #expect(picks.subbedIn == [12] && picks.subbedOut == [10])
+    }
+}
