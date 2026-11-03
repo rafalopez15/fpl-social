@@ -9,7 +9,8 @@ import SwiftUI
 /// accent, SF Pro type. Use these instead of literal colors in views.
 enum Theme {
     /// Screen background.
-    static let background = Color(hex: 0x0F0F23)
+    static let background = Color(hex: backgroundHex)
+    static let backgroundHex: UInt32 = 0x0F0F23
     /// Cards, list rows, the tab bar, popovers.
     static let surface = Color(hex: 0x1B1B30)
     /// Separators and borders on top of `surface`.
@@ -28,10 +29,16 @@ enum Theme {
     static let danger = Color(hex: 0xF87171)
     /// The squad pitch's grass and its lighter mowing stripe, darker than FPL's
     /// bright green so the pitch sits in the navy theme.
-    static let pitch = Color(hex: 0x14532D)
+    static let pitch = Color(hex: pitchHex)
+    static let pitchHex: UInt32 = 0x14532D
     static let pitchStripe = Color(hex: 0x17603A)
-    /// Shirts on the pitch until club colors arrive (FPL-38).
-    static let shirt = Color(hex: 0x9CA3AF)
+    /// Shirts on the pitch for a club with no colors from the API.
+    static let shirt = Color(hex: shirtHex)
+    static let shirtHex: UInt32 = 0x9CA3AF
+    /// Every goalkeeper's shirt on the pitch: the API has no goalkeeper kits, and a
+    /// fixed color keeps keepers apart from outfield shirts (no club plays in it).
+    static let goalkeeperShirt = Color(hex: goalkeeperShirtHex)
+    static let goalkeeperShirtHex: UInt32 = 0xFDE047
 
     /// Chip colors for FPL's 1–5 fixture difficulty, green (easy) to dark red (hard),
     /// following FPL's own scale. Each pairing passes 4.5:1.

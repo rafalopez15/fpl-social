@@ -76,8 +76,8 @@ struct SquadPitch: View {
     }
 }
 
-/// One player: a grey shirt (club colors wait for FPL-38), the name on a navy
-/// plate, and his gameweek points (or the next fixture colored by difficulty
+/// One player: a shirt in his club's colors (goalkeepers in one fixed color),
+/// the name on a navy plate, and his gameweek points (or the next fixture colored by difficulty
 /// when points couldn't load). Captain badge top left; an automatic sub or an
 /// injury flag top right.
 private struct PitchPlayerCard: View {
@@ -107,11 +107,8 @@ private struct PitchPlayerCard: View {
             showingStats = true
         } label: {
             VStack(spacing: 0) {
-                Image(systemName: "tshirt.fill")
-                    .font(.largeTitle)
-                    .foregroundStyle(Theme.shirt)
+                shirt
                     .frame(maxWidth: .infinity, minHeight: 46)
-                    .background(Color.black.opacity(0.15))
 
                 Text(element.webName)
                     .font(.caption2.weight(.semibold))
@@ -148,6 +145,16 @@ private struct PitchPlayerCard: View {
         .accessibilityLabel(accessibilityLabel)
         .accessibilityHint("Shows stats and news")
         .accessibilityAddTraits(.isButton)
+    }
+
+    /// The club's kit: flat, in its primary color with the secondary as collar
+    /// trim. Goalkeepers wear `Theme.goalkeeperShirt`; a club without colors is grey.
+    private var shirt: some View {
+        let kit: KitColors = element.position == .goalkeeper
+            ? .goalkeeper
+            : KitColors(primary: team?.primaryColor, secondary: team?.secondaryColor)
+        return KitShirt(kit: kit)
+            .accessibilityHidden(true)
     }
 
     /// "12", or "–" while yet to play. Captain points are already doubled.
@@ -247,6 +254,107 @@ private struct PitchPlayerCard: View {
         if subbedOut { parts.append("subbed out") }
         if element.availabilityFlag != nil { parts.append(element.availabilityDescription) }
         return parts.joined(separator: ", ")
+    }
+}
+
+/// A shirt's colors, as hex so the hairline can be decided by contrast.
+struct KitColors: Equatable {
+    let primary: UInt32
+    let secondary: UInt32?
+
+    static let goalkeeper = KitColors(primary: Theme.goalkeeperShirtHex, secondary: nil)
+
+    /// Grey when the club has no colors yet.
+    init(primary: String?, secondary: String?) {
+        if let value = UInt32(hexValue: primary) {
+            self.primary = value
+            self.secondary = UInt32(hexValue: secondary)
+        } else {
+            self.primary = Theme.shirtHex
+            self.secondary = nil
+        }
+    }
+
+    init(primary: UInt32, secondary: UInt32?) {
+        self.primary = primary
+        self.secondary = secondary
+    }
+
+    /// Dark kits (Newcastle's black, Everton's navy) fall below 3:1 against the
+    /// pitch or the navy bench, so they get a faint hairline. Light and bright
+    /// kits, white included, stand out on their own.
+    var needsHairline: Bool {
+        min(Self.contrast(primary, Theme.pitchHex), Self.contrast(primary, Theme.backgroundHex)) < 3
+    }
+
+    /// WCAG contrast ratio between two sRGB colors.
+    static func contrast(_ a: UInt32, _ b: UInt32) -> Double {
+        let (la, lb) = (luminance(a), luminance(b))
+        return (max(la, lb) + 0.05) / (min(la, lb) + 0.05)
+    }
+
+    static func luminance(_ hex: UInt32) -> Double {
+        func channel(_ shift: UInt32) -> Double {
+            let c = Double((hex >> shift) & 0xFF) / 255
+            return c <= 0.03928 ? c / 12.92 : pow((c + 0.055) / 1.055, 2.4)
+        }
+        return 0.2126 * channel(16) + 0.7152 * channel(8) + 0.0722 * channel(0)
+    }
+}
+
+/// A flat shirt silhouette: one fill, a thin collar in the secondary color, and
+/// a hairline only for dark kits. Drawn rather than an SF Symbol so it has no
+/// outline and sits flat like the rest of the pitch.
+private struct KitShirt: View {
+    let kit: KitColors
+
+    var body: some View {
+        ZStack {
+            ShirtShape()
+                .fill(Color(hex: kit.primary))
+            if kit.needsHairline {
+                ShirtShape()
+                    .stroke(.white.opacity(0.28), lineWidth: 1)
+            }
+            if let secondary = kit.secondary {
+                CollarShape()
+                    .stroke(Color(hex: secondary), style: StrokeStyle(lineWidth: 2, lineCap: .round))
+            }
+        }
+        .frame(width: 34, height: 30)
+    }
+}
+
+/// A short-sleeved shirt from the front, in a unit square scaled to the rect.
+private struct ShirtShape: Shape {
+    func path(in rect: CGRect) -> Path {
+        func p(_ x: CGFloat, _ y: CGFloat) -> CGPoint {
+            CGPoint(x: rect.minX + x * rect.width, y: rect.minY + y * rect.height)
+        }
+        var path = Path()
+        path.move(to: p(0.37, 0))
+        path.addQuadCurve(to: p(0.63, 0), control: p(0.5, 0.16))
+        path.addLine(to: p(0.86, 0.07))
+        path.addLine(to: p(1, 0.33))
+        path.addLine(to: p(0.81, 0.42))
+        path.addLine(to: p(0.81, 1))
+        path.addLine(to: p(0.19, 1))
+        path.addLine(to: p(0.19, 0.42))
+        path.addLine(to: p(0, 0.33))
+        path.addLine(to: p(0.14, 0.07))
+        path.closeSubpath()
+        return path
+    }
+}
+
+/// The neckline of `ShirtShape`, for the collar trim.
+private struct CollarShape: Shape {
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        path.move(to: CGPoint(x: rect.minX + 0.37 * rect.width, y: rect.minY + 1))
+        path.addQuadCurve(to: CGPoint(x: rect.minX + 0.63 * rect.width, y: rect.minY + 1),
+                          control: CGPoint(x: rect.midX, y: rect.minY + 0.16 * rect.height + 1))
+        return path
     }
 }
 
