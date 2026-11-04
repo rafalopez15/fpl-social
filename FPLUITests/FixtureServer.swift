@@ -33,7 +33,10 @@ final class FixtureServer: @unchecked Sendable {
     private let queue = DispatchQueue(label: "FixtureServer")
 
     init() throws {
-        listener = try NWListener(using: .tcp, on: .any)
+        let parameters = NWParameters.tcp
+        // Loopback only: nothing off this Mac needs to reach it.
+        parameters.requiredLocalEndpoint = .hostPort(host: .ipv4(.loopback), port: .any)
+        listener = try NWListener(using: parameters)
     }
 
     /// Starts listening on a free port and returns the base URL to pass the app.
