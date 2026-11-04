@@ -1116,3 +1116,34 @@ extension StubbedNetworkTests {
         }
     }
 }
+
+struct LoggingTests {
+    @Test func routeHidesTheManagerID() {
+        #expect(FPLAPIClient.route("managers/3039435/transfers") == "managers/{id}/transfers")
+        #expect(FPLAPIClient.route("managers/1") == "managers/{id}")
+        #expect(FPLAPIClient.route("events/9/live") == "events/9/live")
+    }
+
+    @Test func decodingSummaryNamesTheKeyAndPath() throws {
+        var object = try ElementDecodingTests.fixtureObject()
+        object.removeValue(forKey: "web_name")
+        let data = try JSONSerialization.data(withJSONObject: [object])
+        let error = try #require(throws: DecodingError.self) {
+            try JSONDecoder.fplAPI.decode([Element].self, from: data)
+        }
+        #expect(error.logSummary == "missing key webName at [0]")
+    }
+
+    @Test func decodingSummaryForAWrongType() throws {
+        var object = try ElementDecodingTests.fixtureObject()
+        object["now_cost"] = "62"
+        let error = try #require(throws: DecodingError.self) {
+            try ElementDecodingTests.decode(object)
+        }
+        #expect(error.logSummary.hasPrefix("expected Int at nowCost"))
+    }
+
+    @Test func otherErrorsLogDomainAndCode() {
+        #expect(URLError(.notConnectedToInternet).logSummary == "NSURLErrorDomain -1009")
+    }
+}

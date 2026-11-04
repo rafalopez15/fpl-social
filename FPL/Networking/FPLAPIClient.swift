@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import OSLog
 
 /// Client for the fplAPI backend, all routes under `/api`.
 struct FPLAPIClient {
@@ -119,12 +120,31 @@ struct FPLAPIClient {
     private func get<T: Decodable>(_ path: String, query: [URLQueryItem] = []) async throws -> T {
         var url = baseURL.appendingPathComponent(path)
         if !query.isEmpty { url.append(queryItems: query) }
-        let (data, response) = try await session.data(from: url)
+        let route = Self.route(path)
 
-        guard let http = response as? HTTPURLResponse else { throw APIError.invalidResponse }
+        let data: Data
+        let response: URLResponse
+        do {
+            (data, response) = try await session.data(from: url)
+        } catch {
+            if (error as? URLError)?.code == .cancelled || error is CancellationError {
+                Logger.network.debug("GET \(route, privacy: .public) cancelled")
+            } else {
+                Logger.network.error("GET \(route, privacy: .public) failed: \(error.logSummary, privacy: .public) \(error)")
+            }
+            throw error
+        }
+
+        guard let http = response as? HTTPURLResponse else {
+            Logger.network.fault("GET \(route, privacy: .public) returned a response that isn't HTTP")
+            throw APIError.invalidResponse
+        }
 
         guard (200..<300).contains(http.statusCode) else {
             let detail = try? JSONDecoder().decode(ErrorBody.self, from: data).detail
+            // A 404 is an expected answer here (no team with that ID, no squad yet).
+            Logger.network.log(level: http.statusCode == 404 ? .info : .error,
+                               "GET \(route, privacy: .public) returned \(http.statusCode): \(detail ?? "no detail", privacy: .public)")
             switch http.statusCode {
             case 404: throw APIError.notFound(detail ?? "Not found")
             case 503: throw APIError.dataUnavailable(detail ?? "FPL data is currently unavailable")
@@ -133,9 +153,20 @@ struct FPLAPIClient {
         }
 
         do {
-            return try JSONDecoder.fplAPI.decode(T.self, from: data)
+            let value = try JSONDecoder.fplAPI.decode(T.self, from: data)
+            Logger.network.debug("GET \(route, privacy: .public) \(http.statusCode), \(data.count) bytes")
+            return value
         } catch {
+            Logger.network.error("""
+                Couldn't decode \(String(describing: T.self), privacy: .public) from GET \(route, privacy: .public): \
+                \(error.logSummary, privacy: .public)
+                """)
             throw APIError.decoding(error)
         }
+    }
+
+    /// The path with the manager ID taken out, so it can be logged as public.
+    static func route(_ path: String) -> String {
+        path.replacingOccurrences(of: #"managers/\d+"#, with: "managers/{id}", options: .regularExpression)
     }
 }
