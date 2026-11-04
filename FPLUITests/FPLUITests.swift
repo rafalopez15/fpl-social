@@ -5,8 +5,9 @@
 
 import XCTest
 
-/// The key flows, against `FixtureServer` (manager 1, Gameweek 9) and starting
-/// with no linked team and no notes.
+/// The key flows, against `FixtureServer` (manager 1) and starting with no
+/// linked team and no notes. Expected values come from the fixtures, so
+/// refreshing them doesn't break the tests.
 final class FPLUITests: XCTestCase {
     private var server: FixtureServer?
     private var app: XCUIApplication!
@@ -28,31 +29,33 @@ final class FPLUITests: XCTestCase {
     }
 
     @MainActor
-    func testLinkingATeam() {
-        linkManager1()
+    func testLinkingATeam() throws {
+        try linkManager1()
         XCTAssertTrue(app.buttons["Team options"].exists)
     }
 
     @MainActor
-    func testViewingTheSquad() {
-        linkManager1()
-        XCTAssertTrue(element(labelled: "Gameweek 9 · 57 pts").waitForExistence(timeout: 10))
-        XCTAssertTrue(element(labelled: "Haaland, ").waitForExistence(timeout: 10))
+    func testViewingTheSquad() throws {
+        let squad = try Fixtures.squad()
+        try linkManager1()
+        XCTAssertTrue(element(labelled: "Gameweek \(squad.gameweek) · \(squad.points) pts").waitForExistence(timeout: 10))
+        XCTAssertTrue(element(labelled: "\(squad.captain), \(squad.captainTeam)").waitForExistence(timeout: 10))
     }
 
     @MainActor
-    func testWritingANote() {
+    func testWritingANote() throws {
+        let gameweek = try Fixtures.currentGameweek()
         app.buttons["Notes"].firstMatch.tap()
-        let add = app.buttons["Add note to Gameweek 9"]
+        let add = app.buttons["Add note to Gameweek \(gameweek)"]
         XCTAssertTrue(add.waitForExistence(timeout: 10))
         add.tap()
 
         let editor = app.textViews["Note"]
         XCTAssertTrue(editor.waitForExistence(timeout: 5))
-        editor.typeText("Haaland captain for the double")
+        editor.typeText("Captain for the double")
         app.buttons["Save"].tap()
 
-        let row = app.staticTexts["Haaland captain for the double"]
+        let row = app.staticTexts["Captain for the double"]
         XCTAssertTrue(row.waitForExistence(timeout: 5))
     }
 
@@ -62,9 +65,10 @@ final class FPLUITests: XCTestCase {
         app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS %@", text)).firstMatch
     }
 
-    /// Profile, type 1, Find team, then confirm.
+    /// Profile, type 1, Find team, check it's the fixture's team, then confirm.
     @MainActor
-    private func linkManager1() {
+    private func linkManager1() throws {
+        let teamName = try Fixtures.teamName()
         app.buttons["Profile"].firstMatch.tap()
         let field = app.textFields["Manager ID"]
         XCTAssertTrue(field.waitForExistence(timeout: 5))
@@ -74,8 +78,56 @@ final class FPLUITests: XCTestCase {
 
         let link = app.buttons["Link team"]
         XCTAssertTrue(link.waitForExistence(timeout: 10))
-        XCTAssertTrue(element(labelled: "Solio Moose").exists)
+        XCTAssertTrue(element(labelled: teamName).exists)
         link.tap()
         XCTAssertTrue(app.buttons["Team options"].waitForExistence(timeout: 10))
+    }
+}
+
+/// What the app should show for the fixtures `FixtureServer` serves.
+private enum Fixtures {
+    struct Squad {
+        let gameweek: Int
+        let points: Int
+        let captain: String
+        let captainTeam: String
+    }
+
+    static func teamName() throws -> String {
+        try XCTUnwrap(object("manager")["name"] as? String)
+    }
+
+    /// The gameweek Notes treats as current: `is_current`, or `is_next` before the season.
+    static func currentGameweek() throws -> Int {
+        let events = try array("events")
+        let event = events.first { $0["is_current"] as? Bool == true } ?? events.first { $0["is_next"] as? Bool == true }
+        return try XCTUnwrap(event?["id"] as? Int)
+    }
+
+    static func squad() throws -> Squad {
+        let picks = try object("picks")
+        let history = try XCTUnwrap(picks["entry_history"] as? [String: Any])
+        let captainID = try XCTUnwrap((picks["picks"] as? [[String: Any]])?
+            .first { $0["is_captain"] as? Bool == true }?["element"] as? Int)
+        let captain = try XCTUnwrap(try array("elements").first { $0["id"] as? Int == captainID })
+        let teamID = try XCTUnwrap(captain["team"] as? Int)
+        let team = try XCTUnwrap(try array("teams").first { $0["id"] as? Int == teamID })
+        return Squad(gameweek: try XCTUnwrap(history["event"] as? Int),
+                     points: try XCTUnwrap(history["points"] as? Int),
+                     captain: try XCTUnwrap(captain["web_name"] as? String),
+                     captainTeam: try XCTUnwrap(team["name"] as? String))
+    }
+
+    private static func json(_ name: String) throws -> Any {
+        let data = try Data(contentsOf: FixtureServer.fixtures.appendingPathComponent("\(name).json"))
+        return try JSONSerialization.jsonObject(with: data)
+    }
+
+    private static func object(_ name: String) throws -> [String: Any] {
+        try XCTUnwrap(json(name) as? [String: Any], "\(name).json isn't an object")
+    }
+
+    private static func array(_ name: String) throws -> [[String: Any]] {
+        try XCTUnwrap(json(name) as? [[String: Any]], "\(name).json isn't an array")
     }
 }
