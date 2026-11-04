@@ -47,6 +47,8 @@ jobs:
           -scheme FPL \
           -destination "id=$SIMULATOR_UDID" \
           -only-testing:FPLTests/ContractTests \
+          -parallel-testing-enabled NO \
+          -enableCodeCoverage NO \
           -resultBundlePath Contract.xcresult \
           CODE_SIGNING_ALLOWED=NO
 
