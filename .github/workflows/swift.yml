@@ -89,11 +89,12 @@ jobs:
 
     - name: Build and run unit tests
       # Under Thread Sanitizer. TSan only logs a race by default; halting makes it
-      # fail the test that hit it. Parallel testing would clone and boot a second
-      # simulator, which takes minutes here.
+      # fail the test that hit it, and its report is in the saved log. Parallel
+      # testing would clone and boot a second simulator, which takes minutes here.
       env:
         TEST_RUNNER_TSAN_OPTIONS: halt_on_error=1
       run: |
+        set -o pipefail
         xcodebuild test \
           -project FPL.xcodeproj \
           -scheme FPL \
@@ -104,11 +105,11 @@ jobs:
           -enableCodeCoverage YES \
           -resultBundlePath Tests.xcresult \
           SWIFT_TREAT_WARNINGS_AS_ERRORS=YES \
-          CODE_SIGNING_ALLOWED=NO
+          CODE_SIGNING_ALLOWED=NO 2>&1 | tee unit-tests.log
 
     - name: Summarize test results
       if: always()
-      run: python3 .github/scripts/summarize_xcresult.py Tests.xcresult tests-summary.md
+      run: python3 .github/scripts/summarize_xcresult.py Tests.xcresult tests-summary.md --tsan-log unit-tests.log
 
     - name: Run UI tests
       # Against FPLUITests' local fixture server, not production. Coverage is the
