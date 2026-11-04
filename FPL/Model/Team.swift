@@ -13,4 +13,8 @@ struct Team: Codable, Identifiable, Hashable {
     let name: String
     /// e.g. "ARS"
     let shortName: String
+    /// Traditional home colors as "#RRGGBB", not exact kit shades. Nil for a
+    /// club the backend doesn't know yet.
+    var primaryColor: String? = nil
+    var secondaryColor: String? = nil
 }

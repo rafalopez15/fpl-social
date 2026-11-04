@@ -76,10 +76,8 @@ struct SquadPitch: View {
     }
 }
 
-/// One player: a grey shirt (club colors wait for FPL-38), the name on a navy
-/// plate, and his gameweek points (or the next fixture colored by difficulty
-/// when points couldn't load). Captain badge top left; an automatic sub or an
-/// injury flag top right.
+/// One player: club-colored shirt, name, and gameweek points (the next fixture
+/// if points didn't load). Captain badge top left, sub or flag top right.
 private struct PitchPlayerCard: View {
     let pick: ManagerPicks.Pick
     let element: Element
@@ -107,11 +105,8 @@ private struct PitchPlayerCard: View {
             showingStats = true
         } label: {
             VStack(spacing: 0) {
-                Image(systemName: "tshirt.fill")
-                    .font(.largeTitle)
-                    .foregroundStyle(Theme.shirt)
+                shirt
                     .frame(maxWidth: .infinity, minHeight: 46)
-                    .background(Color.black.opacity(0.15))
 
                 Text(element.webName)
                     .font(.caption2.weight(.semibold))
@@ -148,6 +143,15 @@ private struct PitchPlayerCard: View {
         .accessibilityLabel(accessibilityLabel)
         .accessibilityHint("Shows stats and news")
         .accessibilityAddTraits(.isButton)
+    }
+
+    /// Goalkeepers wear `Theme.goalkeeperShirt`; clubs without colors are grey.
+    private var shirt: some View {
+        let kit: KitColors = element.position == .goalkeeper
+            ? .goalkeeper
+            : KitColors(primary: team?.primaryColor, secondary: team?.secondaryColor)
+        return KitShirt(kit: kit)
+            .accessibilityHidden(true)
     }
 
     /// "12", or "–" while yet to play. Captain points are already doubled.
@@ -247,6 +251,66 @@ private struct PitchPlayerCard: View {
         if subbedOut { parts.append("subbed out") }
         if element.availabilityFlag != nil { parts.append(element.availabilityDescription) }
         return parts.joined(separator: ", ")
+    }
+}
+
+/// A flat shirt in the primary color with a secondary-color collar. Dark kits
+/// get a hairline.
+private struct KitShirt: View {
+    let kit: KitColors
+    /// Scales with Dynamic Type. Accessibility sizes show the list instead.
+    @ScaledMetric(relativeTo: .largeTitle) private var width: CGFloat = 34
+
+    var body: some View {
+        ZStack {
+            ShirtShape()
+                .fill(Color(hex: kit.primary))
+            if kit.needsHairline {
+                ShirtShape()
+                    .stroke(.white.opacity(0.28), lineWidth: 1)
+            }
+            if let secondary = kit.secondary {
+                CollarShape()
+                    .stroke(Color(hex: secondary), style: StrokeStyle(lineWidth: width / 17, lineCap: .round))
+            }
+        }
+        // Keeps ShirtShape's proportions.
+        .frame(width: width, height: width * 30 / 34)
+    }
+}
+
+/// A short-sleeved shirt, front view, scaled to the rect.
+private struct ShirtShape: Shape {
+    func path(in rect: CGRect) -> Path {
+        func p(_ x: CGFloat, _ y: CGFloat) -> CGPoint {
+            CGPoint(x: rect.minX + x * rect.width, y: rect.minY + y * rect.height)
+        }
+        var path = Path()
+        path.move(to: p(0.37, 0))
+        path.addQuadCurve(to: p(0.63, 0), control: p(0.5, 0.16))
+        path.addLine(to: p(0.86, 0.07))
+        path.addLine(to: p(1, 0.33))
+        path.addLine(to: p(0.81, 0.42))
+        path.addLine(to: p(0.81, 1))
+        path.addLine(to: p(0.19, 1))
+        path.addLine(to: p(0.19, 0.42))
+        path.addLine(to: p(0, 0.33))
+        path.addLine(to: p(0.14, 0.07))
+        path.closeSubpath()
+        return path
+    }
+}
+
+/// `ShirtShape`'s neckline, moved down by `inset` so the stroke stays on the shirt.
+private struct CollarShape: Shape {
+    var inset: CGFloat = 1
+
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        path.move(to: CGPoint(x: rect.minX + 0.37 * rect.width, y: rect.minY + inset))
+        path.addQuadCurve(to: CGPoint(x: rect.minX + 0.63 * rect.width, y: rect.minY + inset),
+                          control: CGPoint(x: rect.midX, y: rect.minY + 0.16 * rect.height + inset))
+        return path
     }
 }
 

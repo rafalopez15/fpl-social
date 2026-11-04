@@ -920,3 +920,47 @@ struct EarlierSquadTests {
         #expect(store.earlierSquads[2] == SquadState.none)
     }
 }
+
+struct KitColorTests {
+    @Test func teamsDecodeColorsAsOptional() throws {
+        let data = Data(#"""
+        [{"id": 1, "code": 3, "name": "Arsenal", "short_name": "ARS", "primary_color": "#EF0107", "secondary_color": "#FFFFFF"},
+         {"id": 21, "name": "Promoted", "short_name": "PRO", "primary_color": null, "secondary_color": null},
+         {"id": 22, "name": "Older API", "short_name": "OLD"}]
+        """#.utf8)
+        let teams = try JSONDecoder.fplAPI.decode([Team].self, from: data)
+        #expect(teams[0].primaryColor == "#EF0107" && teams[0].secondaryColor == "#FFFFFF")
+        #expect(teams[1].primaryColor == nil && teams[1].secondaryColor == nil)
+        #expect(teams[2].primaryColor == nil)
+    }
+
+    @Test func hexStringsParseOrGiveNil() {
+        #expect(UInt32(hexValue: "#EF0107") == 0xEF0107)
+        #expect(UInt32(hexValue: "ef0107") == 0xEF0107)
+        #expect(UInt32(hexValue: "#FFF") == nil)
+        #expect(UInt32(hexValue: "#GG0000") == nil)
+        #expect(UInt32(hexValue: "") == nil)
+        #expect(UInt32(hexValue: nil) == nil)
+    }
+
+    @Test func onlyDarkKitsGetAHairline() {
+        let kit = { (hex: String) in KitColors(primary: hex, secondary: "#FFFFFF") }
+        // Newcastle black, Everton navy.
+        #expect(kit("#000000").needsHairline)
+        #expect(kit("#003399").needsHairline)
+        // White and bright kits.
+        #expect(!kit("#FFFFFF").needsHairline)
+        #expect(!kit("#6CABDD").needsHairline)
+        #expect(!kit("#F5A12D").needsHairline)
+    }
+
+    @Test func goalkeepersAndUnknownClubsGetFixedColors() {
+        #expect(KitColors.goalkeeper.primary == Theme.goalkeeperShirtHex)
+        // Pink needs no hairline.
+        #expect(!KitColors.goalkeeper.needsHairline)
+        let unknown = KitColors(primary: nil, secondary: "#FFFFFF")
+        #expect(unknown.primary == Theme.shirtHex && unknown.secondary == nil)
+        let badHex = KitColors(primary: "red", secondary: nil)
+        #expect(badHex.primary == Theme.shirtHex)
+    }
+}

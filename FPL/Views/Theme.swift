@@ -9,7 +9,8 @@ import SwiftUI
 /// accent, SF Pro type. Use these instead of literal colors in views.
 enum Theme {
     /// Screen background.
-    static let background = Color(hex: 0x0F0F23)
+    static let background = Color(hex: backgroundHex)
+    static let backgroundHex: UInt32 = 0x0F0F23
     /// Cards, list rows, the tab bar, popovers.
     static let surface = Color(hex: 0x1B1B30)
     /// Separators and borders on top of `surface`.
@@ -28,10 +29,16 @@ enum Theme {
     static let danger = Color(hex: 0xF87171)
     /// The squad pitch's grass and its lighter mowing stripe, darker than FPL's
     /// bright green so the pitch sits in the navy theme.
-    static let pitch = Color(hex: 0x14532D)
+    static let pitch = Color(hex: pitchHex)
+    static let pitchHex: UInt32 = 0x14532D
     static let pitchStripe = Color(hex: 0x17603A)
-    /// Shirts on the pitch until club colors arrive (FPL-38).
-    static let shirt = Color(hex: 0x9CA3AF)
+    /// Shirts for clubs with no colors.
+    static let shirt = Color(hex: shirtHex)
+    static let shirtHex: UInt32 = 0x9CA3AF
+    /// Every goalkeeper's shirt, since the API has no keeper kits. Pink matches no
+    /// club and no theme color; yellow clashed with the doubtful flag.
+    static let goalkeeperShirt = Color(hex: goalkeeperShirtHex)
+    static let goalkeeperShirtHex: UInt32 = 0xF472B6
 
     /// Chip colors for FPL's 1–5 fixture difficulty, green (easy) to dark red (hard),
     /// following FPL's own scale. Each pairing passes 4.5:1.
@@ -83,6 +90,16 @@ extension Color {
     }
 }
 
+extension UInt32 {
+    /// Parses "#RRGGBB" or "RRGGBB"; nil otherwise.
+    init?(hexValue string: String?) {
+        guard var string = string?.trimmingCharacters(in: .whitespaces) else { return nil }
+        if string.hasPrefix("#") { string.removeFirst() }
+        guard string.count == 6, string.allSatisfy(\.isHexDigit), let value = UInt32(string, radix: 16) else { return nil }
+        self = value
+    }
+}
+
 extension View {
     /// Applies the theme to a screen: navy background behind lists and forms.
     /// Text keeps the system `.primary`/`.secondary` styles; overriding them
@@ -98,5 +115,48 @@ extension View {
         self
             .listRowBackground(Theme.surface)
             .listRowSeparatorTint(Theme.border)
+    }
+}
+
+/// A shirt's colors as hex, for the contrast check.
+struct KitColors: Equatable {
+    let primary: UInt32
+    let secondary: UInt32?
+
+    static let goalkeeper = KitColors(primary: Theme.goalkeeperShirtHex, secondary: nil)
+
+    /// Grey when the club has no colors.
+    init(primary: String?, secondary: String?) {
+        if let value = UInt32(hexValue: primary) {
+            self.primary = value
+            self.secondary = UInt32(hexValue: secondary)
+        } else {
+            self.primary = Theme.shirtHex
+            self.secondary = nil
+        }
+    }
+
+    init(primary: UInt32, secondary: UInt32?) {
+        self.primary = primary
+        self.secondary = secondary
+    }
+
+    /// True below 3:1 against the pitch or bench, e.g. Newcastle's black.
+    var needsHairline: Bool {
+        min(Self.contrast(primary, Theme.pitchHex), Self.contrast(primary, Theme.backgroundHex)) < 3
+    }
+
+    /// WCAG contrast ratio between two sRGB colors.
+    static func contrast(_ a: UInt32, _ b: UInt32) -> Double {
+        let (la, lb) = (luminance(a), luminance(b))
+        return (max(la, lb) + 0.05) / (min(la, lb) + 0.05)
+    }
+
+    static func luminance(_ hex: UInt32) -> Double {
+        func channel(_ shift: UInt32) -> Double {
+            let c = Double((hex >> shift) & 0xFF) / 255
+            return c <= 0.03928 ? c / 12.92 : pow((c + 0.055) / 1.055, 2.4)
+        }
+        return 0.2126 * channel(16) + 0.7152 * channel(8) + 0.0722 * channel(0)
     }
 }
