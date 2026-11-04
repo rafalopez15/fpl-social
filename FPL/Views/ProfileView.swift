@@ -305,7 +305,10 @@ private struct LinkTeamForm: View {
                     .font(.footnote)
                     .foregroundStyle(error == .notFound ? Theme.danger : Theme.warning)
                 } else {
-                    Text("On the FPL website, open your team's Points page. Your ID is the number after /entry/ in the address, e.g. fantasy.premierleague.com/entry/**1234567**/event/9.")
+                    Text("""
+                        On the FPL website, open your team's Points page. Your ID is the number after \
+                        /entry/ in the address, e.g. fantasy.premierleague.com/entry/**1234567**/event/9.
+                        """)
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)

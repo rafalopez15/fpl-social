@@ -1,4 +1,6 @@
-# Builds the FPL iOS app and runs its unit tests on an iOS simulator.
+# PRs run SwiftLint, build Debug and Release with warnings as errors, run the
+# unit tests with coverage, then post one comment with the results. Pushes to
+# main run the same checks on the merged code.
 
 name: iOS
 
@@ -9,22 +11,61 @@ on:
       - "FPL/**"
       - "FPLTests/**"
       - "FPL.xcodeproj/**"
+      - ".swiftlint.yml"
       - ".github/workflows/swift.yml"
+      - ".github/scripts/**"
   pull_request:
     branches: [ "main" ]
     paths:
       - "FPL/**"
       - "FPLTests/**"
       - "FPL.xcodeproj/**"
+      - ".swiftlint.yml"
       - ".github/workflows/swift.yml"
+      - ".github/scripts/**"
+
+# A newer push to the same PR or branch cancels the run still in progress.
+concurrency:
+  group: ios-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
 
 jobs:
+  lint:
+    name: SwiftLint
+    # Linux, so lint doesn't use macOS minutes.
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v5
+
+    - name: Run SwiftLint
+      # The summary step decides pass or fail, so a violation doesn't stop here.
+      run: |
+        docker run --rm -v "$PWD":/work -w /work ghcr.io/realm/swiftlint:0.65.1 \
+          swiftlint lint --strict --quiet --reporter json --output /work/swiftlint.json || true
+
+    - name: Annotate and summarize
+      env:
+        SWIFTLINT_ROOT: /work
+      run: python3 .github/scripts/summarize_swiftlint.py swiftlint.json swiftlint-summary.md
+
+    - name: Upload the summary for the PR comment
+      if: always()
+      uses: actions/upload-artifact@v7
+      with:
+        name: ci-summary-swiftlint
+        path: swiftlint-summary.md
+        if-no-files-found: ignore
+        retention-days: 7
+
   test:
+    name: Build and test
     # The app uses iOS 26 SDK APIs, so it needs Xcode 26 or later.
     runs-on: macos-26
-
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
 
     - name: Select Xcode
       uses: maxim-lobanov/setup-xcode@v1
@@ -51,4 +92,92 @@ jobs:
           -scheme FPL \
           -destination "id=$SIMULATOR_UDID" \
           -only-testing:FPLTests \
+          -enableCodeCoverage YES \
+          -resultBundlePath Tests.xcresult \
+          SWIFT_TREAT_WARNINGS_AS_ERRORS=YES \
           CODE_SIGNING_ALLOWED=NO
+
+    - name: Summarize test results
+      if: always()
+      run: python3 .github/scripts/summarize_xcresult.py Tests.xcresult tests-summary.md
+
+    - name: Build Release
+      id: release
+      # Also after failing tests: a Release-only problem is worth knowing about too.
+      if: ${{ !cancelled() }}
+      run: |
+        xcodebuild build \
+          -project FPL.xcodeproj \
+          -scheme FPL \
+          -configuration Release \
+          -destination "generic/platform=iOS Simulator" \
+          SWIFT_TREAT_WARNINGS_AS_ERRORS=YES \
+          CODE_SIGNING_ALLOWED=NO
+
+    - name: Add the Release build to the summary
+      if: always()
+      env:
+        OUTCOME: ${{ steps.release.outcome }}
+      run: |
+        case "$OUTCOME" in
+          success) line="✅ Release build passed" ;;
+          failure) line="❌ Release build failed, see the job log" ;;
+          *) line="⚠️ Release build didn't run" ;;
+        esac
+        printf '\n%s\n' "$line" | tee -a tests-summary.md >> "$GITHUB_STEP_SUMMARY"
+
+    - name: Upload the summary for the PR comment
+      if: always()
+      uses: actions/upload-artifact@v7
+      with:
+        name: ci-summary-tests
+        path: tests-summary.md
+        if-no-files-found: ignore
+        retention-days: 7
+
+  report:
+    name: PR comment
+    # Runs after lint and tests even when they fail, so failures get reported.
+    if: always() && github.event_name == 'pull_request'
+    needs: [lint, test]
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+    steps:
+    - name: Download the summaries
+      uses: actions/download-artifact@v8
+      with:
+        pattern: ci-summary-*
+        merge-multiple: true
+        path: summaries
+
+    - name: Post or update the CI comment
+      # One comment per PR, found by its hidden marker and edited in place on
+      # later pushes, so the PR doesn't collect a comment per push.
+      env:
+        GH_TOKEN: ${{ github.token }}
+        REPO: ${{ github.repository }}
+        PR: ${{ github.event.pull_request.number }}
+        SHA: ${{ github.event.pull_request.head.sha }}
+        RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+      run: |
+        marker='<!-- ios-ci-report -->'
+        {
+          echo "$marker"
+          echo "**iOS CI for \`${SHA:0:7}\`** · [workflow run]($RUN_URL)"
+          echo
+          cat summaries/tests-summary.md 2>/dev/null || echo "## ⚠️ Build and test didn't report results"
+          echo
+          cat summaries/swiftlint-summary.md 2>/dev/null || echo "## ⚠️ SwiftLint didn't report results"
+        } > comment.md
+
+        comment_id=$(gh api "repos/$REPO/issues/$PR/comments" --paginate \
+          --jq ".[] | select(.user.login == \"github-actions[bot]\" and (.body | startswith(\"$marker\"))) | .id" \
+          | head -n 1)
+        if [ -n "$comment_id" ]; then
+          gh api --method PATCH "repos/$REPO/issues/comments/$comment_id" -F body=@comment.md > /dev/null
+          echo "Updated comment $comment_id"
+        else
+          gh api "repos/$REPO/issues/$PR/comments" -F body=@comment.md > /dev/null
+          echo "Created a comment"
+        fi

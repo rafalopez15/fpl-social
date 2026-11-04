@@ -371,7 +371,8 @@ private struct StatSection: View {
 extension View {
     /// The stats popover for `element`, with its note button: tapping it closes
     /// the popover and opens the note editor for the current gameweek with the
-    /// player linked. "All notes about …" opens `PlayerNotesView` the same way. Used by the Players list and Profile's squad, which passes
+    /// player linked. "All notes about …" opens `PlayerNotesView` the same way.
+    /// Used by the Players list and Profile's squad, which passes
     /// `showsStats: false` to leave out the season and advanced stats.
     func statsPopover(isPresented: Binding<Bool>, element: Element, team: Team?,
                       fixtures: [GameweekFixtures], teams: [Int: Team],
