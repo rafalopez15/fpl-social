@@ -954,6 +954,7 @@ struct TransferNetTests {
         #expect(Transfer.pointsText(-5) == "\u{2212}5 pts")
         #expect(Transfer.pointsText(0) == "0 pts")
         #expect(Transfer.pointsDescription(1) == "gained 1 point")
+        #expect(Transfer.pointsDescription(-1) == "lost 1 point")
         #expect(Transfer.pointsDescription(-5) == "lost 5 points")
         #expect(Transfer.pointsDescription(0) == "no change in points")
     }
@@ -967,6 +968,21 @@ struct TransferNetTests {
         built = TransferTests.transfer(9, 10, day: 1, event: 4)
         #expect(Note.forTransfer(built, in: [note]) == nil)
         #expect(Note.forTransfer(TransferTests.transfer(9, 11, day: 1, event: 3), in: [note]) == nil)
+    }
+
+    @Test func aRepeatedSwapKeepsDistinctIDs() {
+        // Unmarked churn can list the same swap twice in one gameweek.
+        let first = NamedTransfer(TransferTests.transfer(9, 10, day: 1, event: 3), names: [:])
+        let again = NamedTransfer(TransferTests.transfer(9, 10, day: 2, event: 3), names: [:])
+        #expect(first.id != again.id)
+    }
+
+    @Test func moreThanASquadOfTransfersInAGameweekIsUnmarkedChurn() {
+        let wildcard = (1...15).map { TransferTests.transfer($0, $0 + 100, day: 1, event: 3) }
+        #expect(!Transfer.hasUnmarkedChurn(wildcard))
+        #expect(Transfer.hasUnmarkedChurn(wildcard + [TransferTests.transfer(50, 51, day: 1, event: 3)]))
+        // Counted per gameweek.
+        #expect(!Transfer.hasUnmarkedChurn(wildcard + [TransferTests.transfer(50, 51, day: 1, event: 4)]))
     }
 
     @Test func popoverGetsTheLatestTransfersNet() {
@@ -1039,7 +1055,58 @@ extension StubbedNetworkTests {
         }
     }
 
+    @MainActor
     struct TransferChurnTests {
+        /// A linked store whose transfers since linking are `rows` (all in GW10).
+        func store(rows: [String]) throws -> (store: LinkedTeamStore, cleanup: () -> Void) {
+            let suite = "FPLTests.\(UUID().uuidString)"
+            let defaults = try #require(UserDefaults(suiteName: suite))
+            let client = FPLAPIClient(baseURL: URL(string: "https://stub.test/api")!, session: StubURLProtocol.session)
+            let store = LinkedTeamStore(defaults: defaults, client: client)
+            let manager = try ManagerTests.manager()
+            store.link(manager)
+            StubURLProtocol.delay = 0
+            StubURLProtocol.responses = [
+                "/api/managers/\(manager.id)/transfers": (200, "[" + rows.joined(separator: ",") + "]"),
+                "/api/managers/\(manager.id)/history": (200, #"""
+                {"current": [{"event": 9, "points": 50, "overall_rank": 1000,
+                              "event_transfers": 1, "event_transfers_cost": 4}],
+                 "chips": []}
+                """#),
+                "/api/elements": (200, "[]"),
+            ]
+            return (store, { defaults.removePersistentDomain(forName: suite) })
+        }
+
+        /// A transfer made after linking, for GW10.
+        func row(_ elementIn: Int, net: Int? = nil) -> String {
+            let net = net.map(String.init) ?? "null"
+            return #"{"element_in": \#(elementIn), "element_out": \#(elementIn + 100), "event": 10, "#
+                + #""time": "2099-01-01T10:00:00.000000Z", "element_in_cost": 50, "element_out_cost": 45, "#
+                + #""is_churn": false, "net_points": \#(net)}"#
+        }
+
+        @Test func thePromptWaitsWhenChurnIsUnmarked() async throws {
+            let (store, cleanup) = try store(rows: (1...20).map { row($0) })
+            defer { cleanup() }
+            await store.checkForTransfers()
+            #expect(store.pendingTransfers.isEmpty)
+        }
+
+        @Test func realTransfersArePrompted() async throws {
+            let (store, cleanup) = try store(rows: [row(1), row(2)])
+            defer { cleanup() }
+            await store.checkForTransfers()
+            #expect(store.pendingTransfers.count == 2)
+        }
+
+        @Test func transferNetSubtractsHitsAfterARefresh() async throws {
+            let (store, cleanup) = try store(rows: [row(1, net: 6), row(2)])
+            defer { cleanup() }
+            await store.refresh()
+            #expect(store.transferNet == 2)
+        }
+
         @Test func theClientDropsChurn() async throws {
             StubURLProtocol.delay = 0
             StubURLProtocol.responses = ["/api/managers/1/transfers": (200, TransferNetTests.rows)]

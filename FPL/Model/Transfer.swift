@@ -27,6 +27,12 @@ struct Transfer: Codable, Hashable {
     var pointsOut: Int? = nil
     var netPoints: Int? = nil
 
+    /// More transfers in one gameweek than a squad has players, so churn wasn't
+    /// marked (the backend's database was down). The prompt waits for a later check.
+    static func hasUnmarkedChurn(_ transfers: [Transfer]) -> Bool {
+        Dictionary(grouping: transfers, by: \.event).values.contains { $0.count > 15 }
+    }
+
     /// Net points of the real transfers minus hits taken, for the team card.
     /// Nil without history or when no transfer has points yet.
     static func net(of transfers: [Transfer], history: ManagerHistory?) -> Int? {
