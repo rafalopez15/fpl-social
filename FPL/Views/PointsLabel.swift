@@ -18,12 +18,12 @@ struct PointsLabel: View {
     }
 
     /// "+2 pts", "−5 pts" or "0 pts".
-    static func text(_ points: Int) -> String {
+    nonisolated static func text(_ points: Int) -> String {
         points > 0 ? "+\(points) pts" : points < 0 ? "\u{2212}\(-points) pts" : "0 pts"
     }
 
     /// "gained 2 points", "lost 5 points" or "no change in points", for VoiceOver.
-    static func description(_ points: Int) -> String {
+    nonisolated static func description(_ points: Int) -> String {
         let count = abs(points) == 1 ? "1 point" : "\(abs(points)) points"
         return points > 0 ? "gained \(count)" : points < 0 ? "lost \(count)" : "no change in points"
     }
