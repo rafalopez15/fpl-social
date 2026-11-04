@@ -19,6 +19,37 @@ struct Transfer: Codable, Hashable {
     let elementInCost: Int?
     /// Selling price of the player out, in tenths of a million.
     let elementOutCost: Int?
+    /// A swap undone while planning a Wildcard or Free Hit; the client drops these.
+    var isChurn: Bool? = nil
+    /// Raw points of the player in and out while the player in was owned, and
+    /// their difference. Nil until the gameweek is finished, or if unknown.
+    var pointsIn: Int? = nil
+    var pointsOut: Int? = nil
+    var netPoints: Int? = nil
+
+    /// Net points of the real transfers minus hits taken, for the team card.
+    /// Nil without history or when no transfer has points yet.
+    static func net(of transfers: [Transfer], history: ManagerHistory?) -> Int? {
+        let points = transfers.compactMap(\.netPoints)
+        guard let history, !points.isEmpty else { return nil }
+        return points.reduce(0, +) - history.current.reduce(0) { $0 + ($1.eventTransfersCost ?? 0) }
+    }
+
+    /// "+2 pts", "−5 pts" or "0 pts".
+    static func pointsText(_ points: Int) -> String {
+        points > 0 ? "+\(points) pts" : points < 0 ? "\u{2212}\(-points) pts" : "0 pts"
+    }
+
+    /// "gained 2 points", "lost 5 points" or "no change in points", for VoiceOver.
+    static func pointsDescription(_ points: Int) -> String {
+        switch points {
+        case 0: "no change in points"
+        case 1: "gained 1 point"
+        case -1: "lost 1 point"
+        case let p where p > 0: "gained \(p) points"
+        default: "lost \(-points) points"
+        }
+    }
 
     /// Transfers made after `date`, oldest first, so a prompt lists them in the order they were made.
     static func made(after date: Date, in transfers: [Transfer]) -> [Transfer] {

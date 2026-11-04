@@ -167,6 +167,11 @@ final class LinkedTeamStore: ObservableObject {
         }
     }
 
+    /// Points gained or lost by transfers this season, minus hits; nil until known.
+    var transferNet: Int? {
+        transferHistory.flatMap { Transfer.net(of: $0.map(\.transfer), history: history) }
+    }
+
     /// The gameweeks the squad stepper can show: from the one the manager joined
     /// to the latest squad's. Nil until the latest squad has loaded.
     var squadGameweeks: ClosedRange<Int>? {
@@ -257,7 +262,7 @@ struct NamedTransfer: Identifiable, Hashable {
     let transfer: Transfer
     let noteTransfer: NoteTransfer
 
-    var id: String { "\(transfer.time.timeIntervalSince1970)-\(transfer.elementIn)" }
+    var id: String { "\(transfer.event)-\(transfer.elementIn)-\(transfer.elementOut)" }
 
     /// Groups transfers by gameweek, latest gameweek first and newest transfer
     /// first within each, for Profile's list.
