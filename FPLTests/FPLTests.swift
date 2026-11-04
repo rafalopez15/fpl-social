@@ -965,10 +965,3 @@ struct KitColorTests {
         #expect(badHex.primary == Theme.shirtHex)
     }
 }
-
-// Temporary CI probe, reverted before merge.
-struct CIProbeTests {
-    @Test func deliberatelyFails() {
-        #expect(1 + 1 == 3, "probe for the CI summary")
-    }
-}
