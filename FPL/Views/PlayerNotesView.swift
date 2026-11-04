@@ -40,6 +40,7 @@ struct PlayerNotesView: View {
                 if let deleted {
                     UndoToast(message: "Note deleted") {
                         context.insert(deleted.restored())
+                        context.saveNotes("Restored a deleted note")
                         withAnimation { self.deleted = nil }
                     }
                     .padding(.horizontal, 16)
@@ -86,6 +87,7 @@ struct PlayerNotesView: View {
                             withAnimation { deleted = DeletedNote(note) }
                             context.delete(note)
                         }
+                        context.saveNotes("Deleted \(offsets.count) note(s)")
                         AccessibilityNotification.Announcement("Note deleted. Undo available.").post()
                     }
                 } header: {

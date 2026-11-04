@@ -67,6 +67,7 @@ struct TransferPromptView: View {
                                 transfer: pending.noteTransfer,
                                 createdAt: pending.transfer.time))
         }
+        context.saveNotes("Saved \(transfers.count) transfer note(s)")
         onFinish()
     }
 }
