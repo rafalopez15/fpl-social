@@ -119,7 +119,7 @@ final class LinkedTeamStore: ObservableObject {
         let new = Transfer.made(after: seenUntil, in: transfers)
         guard !new.isEmpty else { return }
         guard !Transfer.hasUnmarkedChurn(new) else {
-            Logger.linkedTeam.notice("Holding the transfer prompt: \(new.count) new transfers include unmarked churn")
+            Logger.linkedTeam.info("Holding the transfer prompt: \(new.count) new transfers include unmarked churn")
             return
         }
 
