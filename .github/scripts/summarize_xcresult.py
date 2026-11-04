@@ -1,6 +1,8 @@
 """Summarize an Xcode test result bundle: results, failures and line coverage.
 
-    python summarize_xcresult.py Tests.xcresult [tests-summary.md]
+    python summarize_xcresult.py Tests.xcresult [tests-summary.md] [label]
+
+`label` names the tests in the heading ("UI tests"); it defaults to "tests".
 
 Reads `xcrun xcresulttool get test-results summary` (covers Swift Testing and
 XCTest) and `xcrun xccov view --report --json` for the app target's coverage.
@@ -76,10 +78,10 @@ def build_failure_markdown(errors):
     return "\n".join(lines) + "\n"
 
 
-def to_markdown(results, coverage):
+def to_markdown(results, coverage, label="tests"):
     total = results["total"]
     percent = results["passed"] / total * 100 if total else 0.0
-    status = f"❌ {results['failed']} test(s) failed" if results["failed"] else "✅ All tests passed"
+    status = f"❌ {results['failed']} of the {label} failed" if results["failed"] else f"✅ All {label} passed"
     lines = [f"## {status}", "",
              "| Total | Passed | Failed | Skipped | Pass rate |", "|---|---|---|---|---|",
              f"| {total} | {results['passed']} | {results['failed']} | {results['skipped']} | {percent:.1f}% |"]
@@ -102,6 +104,7 @@ def to_markdown(results, coverage):
 def main():
     bundle = sys.argv[1] if len(sys.argv) > 1 else "Tests.xcresult"
     markdown_path = sys.argv[2] if len(sys.argv) > 2 else None
+    label = sys.argv[3] if len(sys.argv) > 3 else "tests"
     if not os.path.exists(bundle):
         message = f"No result bundle at {bundle}; the build likely failed before tests ran."
         print(message)
@@ -121,7 +124,7 @@ def main():
     print(f"{results['passed']}/{results['total']} passed, {results['failed']} failed, {results['skipped']} skipped")
     for name, message in results["failures"]:
         print(f"  FAILED {name}: {message}")
-    write_markdown(to_markdown(results, coverage), markdown_path)
+    write_markdown(to_markdown(results, coverage, label), markdown_path)
 
 
 if __name__ == "__main__":

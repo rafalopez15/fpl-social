@@ -8,16 +8,15 @@ import OSLog
 
 /// Client for the fplAPI backend, all routes under `/api`.
 struct FPLAPIClient {
-    /// From the `FPL_API_BASE_URL` build setting (via `FPLAPIBaseURL` in Info.plist):
-    /// production fplAPI on Vercel in Release, and in Debug production or, while an
-    /// app story waits on an unmerged backend PR, that PR's Vercel preview. For a local backend, use `http://127.0.0.1:5000/api`.
+    /// From the `FPL_API_BASE_URL` build setting (via `FPLAPIBaseURL` in Info.plist),
+    /// or in Debug the `-FPLAPIBaseURL` launch argument. A local backend is `http://127.0.0.1:5000/api`.
     var baseURL: URL = Self.configuredBaseURL
 
     static let productionBaseURL = URL(string: "https://fpl-api-six.vercel.app/api")!
 
     /// Falls back to production if the setting is missing or isn't a URL.
     static var configuredBaseURL: URL {
-        (Bundle.main.object(forInfoDictionaryKey: "FPLAPIBaseURL") as? String)
+        LaunchOptions.baseURLOverride ?? (Bundle.main.object(forInfoDictionaryKey: "FPLAPIBaseURL") as? String)
             .flatMap { $0.isEmpty ? nil : URL(string: $0) } ?? productionBaseURL
     }
     var session: URLSession = .shared
