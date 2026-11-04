@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import OSLog
 
 /// The FPL team linked on this device. The link is stored in UserDefaults, so it
 /// survives restarts without an account. Shared via the environment so other
@@ -49,7 +50,11 @@ final class LinkedTeamStore: ObservableObject {
         self.defaults = defaults
         self.client = client
         if let data = defaults.data(forKey: Self.key) {
-            linked = try? JSONDecoder().decode(LinkedTeam.self, from: data)
+            do {
+                linked = try JSONDecoder().decode(LinkedTeam.self, from: data)
+            } catch {
+                Logger.linkedTeam.error("Couldn't read the saved team, showing none: \(error.logSummary, privacy: .public)")
+            }
         }
         // Links made before transfer notes existed start watching from now.
         if linked != nil, transfersSeenUntil == nil { transfersSeenUntil = .now }
@@ -65,7 +70,12 @@ final class LinkedTeamStore: ObservableObject {
         let team = LinkedTeam(manager)
         linked = team
         self.manager = manager
-        defaults.set(try? JSONEncoder().encode(team), forKey: Self.key)
+        do {
+            defaults.set(try JSONEncoder().encode(team), forKey: Self.key)
+        } catch {
+            Logger.linkedTeam.fault("Couldn't save the linked team: \(error.logSummary, privacy: .public)")
+        }
+        Logger.linkedTeam.notice("Linked team \(team.id, privacy: .private)")
         // Only transfers made from now on get a prompt; the season so far doesn't.
         transfersSeenUntil = .now
         pendingTransfers = []
@@ -93,6 +103,7 @@ final class LinkedTeamStore: ObservableObject {
         earlierPoints = [:]
         defaults.removeObject(forKey: Self.key)
         defaults.removeObject(forKey: Self.seenKey)
+        Logger.linkedTeam.notice("Unlinked team")
     }
 
     /// Looks for transfers made since the last check and queues them for the
@@ -106,10 +117,15 @@ final class LinkedTeamStore: ObservableObject {
 
         guard let transfers = try? await client.transfers(managerID: id) else { return }
         let new = Transfer.made(after: seenUntil, in: transfers)
-        guard !new.isEmpty, !Transfer.hasUnmarkedChurn(new) else { return }
+        guard !new.isEmpty else { return }
+        guard !Transfer.hasUnmarkedChurn(new) else {
+            Logger.linkedTeam.notice("Holding the transfer prompt: \(new.count) new transfers include unmarked churn")
+            return
+        }
 
         // Names for the prompt; without them, wait rather than show bare ids.
         guard await loadPlayers(Transfer.players(in: new)), linked?.id == id else { return }
+        Logger.linkedTeam.info("Prompting for \(new.count) new transfer(s)")
         pendingTransfers = new.map { NamedTransfer($0, names: names) }
         // Keep Profile in step with the prompt.
         transferHistory = transfers.map { NamedTransfer($0, names: names) }
