@@ -792,14 +792,14 @@ struct PicksTests {
             LiveElement(id: 2, totalPoints: 3, minutes: 90),    // bench, multiplier 0
             LiveElement(id: 11, totalPoints: nil, minutes: nil),
         ], fixtures: [])
-        func score(_ element: Int) -> PickScore? {
-            live.score(for: try! #require(picks.picks.first { $0.element == element }), team: 5)
+        func score(_ element: Int) throws -> PickScore? {
+            live.score(for: try #require(picks.picks.first { $0.element == element }), team: 5)
         }
-        #expect(score(30) == .points(24))
-        #expect(score(1) == .points(2))
-        #expect(score(2) == .points(3))
+        #expect(try score(30) == .points(24))
+        #expect(try score(1) == .points(2))
+        #expect(try score(2) == .points(3))
         // Null points are unknown, not 0.
-        #expect(score(11) == nil)
+        #expect(try score(11) == nil)
     }
 
     @Test func playersWhoseMatchHasntStartedAreYetToPlay() throws {
@@ -848,8 +848,8 @@ final class StubURLProtocol: URLProtocol {
 
     private var stopped = false
 
-    override class func canInit(with request: URLRequest) -> Bool { true }
-    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+    override static func canInit(with request: URLRequest) -> Bool { true }
+    override static func canonicalRequest(for request: URLRequest) -> URLRequest { request }
 
     override func startLoading() {
         DispatchQueue.global().asyncAfter(deadline: .now() + Self.delay) { [self] in
@@ -867,13 +867,14 @@ final class StubURLProtocol: URLProtocol {
 
 @MainActor @Suite(.serialized)
 struct EarlierSquadTests {
-    func store() throws -> (LinkedTeamStore, UserDefaults, String) {
+    /// A linked store on its own UserDefaults suite; call `cleanup` when done.
+    func store() throws -> (store: LinkedTeamStore, cleanup: () -> Void) {
         let suite = "FPLTests.\(UUID().uuidString)"
         let defaults = try #require(UserDefaults(suiteName: suite))
         let client = FPLAPIClient(baseURL: URL(string: "https://stub.test/api")!, session: StubURLProtocol.session)
         let store = LinkedTeamStore(defaults: defaults, client: client)
         store.link(try ManagerTests.manager())
-        return (store, defaults, suite)
+        return (store, { defaults.removePersistentDomain(forName: suite) })
     }
 
     func stubSquad(managerID: Int) {
@@ -885,8 +886,8 @@ struct EarlierSquadTests {
     }
 
     @Test func aCancelledLoadDoesNotShowRetry() async throws {
-        let (store, defaults, suite) = try store()
-        defer { defaults.removePersistentDomain(forName: suite) }
+        let (store, cleanup) = try store()
+        defer { cleanup() }
         stubSquad(managerID: try #require(store.linked?.id))
         StubURLProtocol.delay = 0.5
 
@@ -906,8 +907,8 @@ struct EarlierSquadTests {
     }
 
     @Test func aFailedLoadShowsRetryAndA404ShowsNoSquad() async throws {
-        let (store, defaults, suite) = try store()
-        defer { defaults.removePersistentDomain(forName: suite) }
+        let (store, cleanup) = try store()
+        defer { cleanup() }
         let id = try #require(store.linked?.id)
         StubURLProtocol.delay = 0
 

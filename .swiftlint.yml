@@ -1,0 +1,27 @@
+# Run locally: swiftlint lint --strict (brew install swiftlint), or the Docker
+# command in .github/workflows/swift.yml. --strict fails on warnings too.
+included:
+  - FPL
+  - FPLTests
+
+disabled_rules:
+  # Multi-line literals keep a trailing comma so adding a line is a one-line diff.
+  - trailing_comma
+  # Decodable models spell out `= nil` on optional fields.
+  - implicit_optional_initialization
+
+line_length:
+  warning: 140
+  error: 200
+  ignores_urls: true
+
+identifier_name:
+  # Short names are fine in closures and math (a, b, x, y, gw).
+  min_length: 1
+
+cyclomatic_complexity:
+  warning: 12
+
+file_length:
+  warning: 500
+  error: 800
