@@ -36,9 +36,11 @@ enum Theme {
     static let shirt = Color(hex: shirtHex)
     static let shirtHex: UInt32 = 0x9CA3AF
     /// Every goalkeeper's shirt on the pitch: the API has no goalkeeper kits, and a
-    /// fixed color keeps keepers apart from outfield shirts (no club plays in it).
+    /// fixed color keeps keepers apart from outfield shirts. Pink because no club
+    /// plays in it and it can't be mistaken for the app's green, `warning` yellow
+    /// or `danger` red (yellow clashed with a doubtful flag).
     static let goalkeeperShirt = Color(hex: goalkeeperShirtHex)
-    static let goalkeeperShirtHex: UInt32 = 0xFDE047
+    static let goalkeeperShirtHex: UInt32 = 0xF472B6
 
     /// Chip colors for FPL's 1–5 fixture difficulty, green (easy) to dark red (hard),
     /// following FPL's own scale. Each pairing passes 4.5:1.

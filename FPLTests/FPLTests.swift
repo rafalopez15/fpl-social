@@ -956,6 +956,8 @@ struct KitColorTests {
 
     @Test func goalkeepersAndUnknownClubsGetFixedColors() {
         #expect(KitColors.goalkeeper.primary == Theme.goalkeeperShirtHex)
+        // Bright enough on the pitch and the bench without a hairline.
+        #expect(!KitColors.goalkeeper.needsHairline)
         let unknown = KitColors(primary: nil, secondary: "#FFFFFF")
         #expect(unknown.primary == Theme.shirtHex && unknown.secondary == nil)
         let badHex = KitColors(primary: "red", secondary: nil)
