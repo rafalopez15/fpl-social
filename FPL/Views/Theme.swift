@@ -88,12 +88,6 @@ extension Color {
             blue: Double(hex & 0xFF) / 255
         )
     }
-
-    /// "#EF0107" (or without the #, any case). Nil for nil or anything else.
-    init?(hexString: String?) {
-        guard let value = UInt32(hexValue: hexString) else { return nil }
-        self.init(hex: value)
-    }
 }
 
 extension UInt32 {
@@ -121,5 +115,50 @@ extension View {
         self
             .listRowBackground(Theme.surface)
             .listRowSeparatorTint(Theme.border)
+    }
+}
+
+/// A shirt's colors, as hex so the hairline can be decided by contrast.
+struct KitColors: Equatable {
+    let primary: UInt32
+    let secondary: UInt32?
+
+    static let goalkeeper = KitColors(primary: Theme.goalkeeperShirtHex, secondary: nil)
+
+    /// Grey when the club has no colors yet.
+    init(primary: String?, secondary: String?) {
+        if let value = UInt32(hexValue: primary) {
+            self.primary = value
+            self.secondary = UInt32(hexValue: secondary)
+        } else {
+            self.primary = Theme.shirtHex
+            self.secondary = nil
+        }
+    }
+
+    init(primary: UInt32, secondary: UInt32?) {
+        self.primary = primary
+        self.secondary = secondary
+    }
+
+    /// Dark kits (Newcastle's black, Everton's navy) fall below 3:1 against the
+    /// pitch or the navy bench, so they get a faint hairline. Light and bright
+    /// kits, white included, stand out on their own.
+    var needsHairline: Bool {
+        min(Self.contrast(primary, Theme.pitchHex), Self.contrast(primary, Theme.backgroundHex)) < 3
+    }
+
+    /// WCAG contrast ratio between two sRGB colors.
+    static func contrast(_ a: UInt32, _ b: UInt32) -> Double {
+        let (la, lb) = (luminance(a), luminance(b))
+        return (max(la, lb) + 0.05) / (min(la, lb) + 0.05)
+    }
+
+    static func luminance(_ hex: UInt32) -> Double {
+        func channel(_ shift: UInt32) -> Double {
+            let c = Double((hex >> shift) & 0xFF) / 255
+            return c <= 0.03928 ? c / 12.92 : pow((c + 0.055) / 1.055, 2.4)
+        }
+        return 0.2126 * channel(16) + 0.7152 * channel(8) + 0.0722 * channel(0)
     }
 }
