@@ -76,10 +76,8 @@ struct SquadPitch: View {
     }
 }
 
-/// One player: a shirt in his club's colors (goalkeepers in one fixed color),
-/// the name on a navy plate, and his gameweek points (or the next fixture
-/// colored by difficulty when points couldn't load). Captain badge top left;
-/// an automatic sub or an injury flag top right.
+/// One player: club-colored shirt, name, and gameweek points (the next fixture
+/// if points didn't load). Captain badge top left, sub or flag top right.
 private struct PitchPlayerCard: View {
     let pick: ManagerPicks.Pick
     let element: Element
@@ -147,8 +145,7 @@ private struct PitchPlayerCard: View {
         .accessibilityAddTraits(.isButton)
     }
 
-    /// The club's kit: flat, in its primary color with the secondary as collar
-    /// trim. Goalkeepers wear `Theme.goalkeeperShirt`; a club without colors is grey.
+    /// Goalkeepers wear `Theme.goalkeeperShirt`; clubs without colors are grey.
     private var shirt: some View {
         let kit: KitColors = element.position == .goalkeeper
             ? .goalkeeper
@@ -257,14 +254,11 @@ private struct PitchPlayerCard: View {
     }
 }
 
-/// A flat shirt silhouette: one fill, a thin collar in the secondary color, and
-/// a hairline only for dark kits. Drawn rather than an SF Symbol so it has no
-/// outline and sits flat like the rest of the pitch.
+/// A flat shirt in the primary color with a secondary-color collar. Dark kits
+/// get a hairline.
 private struct KitShirt: View {
     let kit: KitColors
-    /// Grows with Dynamic Type like the names and points below it, as the SF
-    /// Symbol it replaced did. Past the largest standard size the squad shows
-    /// as a list instead, so it never has to fit an accessibility size.
+    /// Scales with Dynamic Type. Accessibility sizes show the list instead.
     @ScaledMetric(relativeTo: .largeTitle) private var width: CGFloat = 34
 
     var body: some View {
@@ -280,12 +274,12 @@ private struct KitShirt: View {
                     .stroke(Color(hex: secondary), style: StrokeStyle(lineWidth: width / 17, lineCap: .round))
             }
         }
-        // ShirtShape is drawn in a unit square; 30:34 keeps its proportions.
+        // Keeps ShirtShape's proportions.
         .frame(width: width, height: width * 30 / 34)
     }
 }
 
-/// A short-sleeved shirt from the front, in a unit square scaled to the rect.
+/// A short-sleeved shirt, front view, scaled to the rect.
 private struct ShirtShape: Shape {
     func path(in rect: CGRect) -> Path {
         func p(_ x: CGFloat, _ y: CGFloat) -> CGPoint {
@@ -307,9 +301,7 @@ private struct ShirtShape: Shape {
     }
 }
 
-/// The neckline of `ShirtShape`, for the collar trim: the same curve, moved
-/// down by `inset` so the stroke sits on the shirt rather than half off its
-/// top edge.
+/// `ShirtShape`'s neckline, moved down by `inset` so the stroke stays on the shirt.
 private struct CollarShape: Shape {
     var inset: CGFloat = 1
 

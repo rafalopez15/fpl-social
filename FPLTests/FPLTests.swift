@@ -945,10 +945,10 @@ struct KitColorTests {
 
     @Test func onlyDarkKitsGetAHairline() {
         let kit = { (hex: String) in KitColors(primary: hex, secondary: "#FFFFFF") }
-        // Newcastle's black and Everton's navy disappear against the pitch or bench.
+        // Newcastle black, Everton navy.
         #expect(kit("#000000").needsHairline)
         #expect(kit("#003399").needsHairline)
-        // White (Fulham, Leeds, Spurs) and bright kits stand out on their own.
+        // White and bright kits.
         #expect(!kit("#FFFFFF").needsHairline)
         #expect(!kit("#6CABDD").needsHairline)
         #expect(!kit("#F5A12D").needsHairline)
@@ -956,7 +956,7 @@ struct KitColorTests {
 
     @Test func goalkeepersAndUnknownClubsGetFixedColors() {
         #expect(KitColors.goalkeeper.primary == Theme.goalkeeperShirtHex)
-        // Bright enough on the pitch and the bench without a hairline.
+        // Pink needs no hairline.
         #expect(!KitColors.goalkeeper.needsHairline)
         let unknown = KitColors(primary: nil, secondary: "#FFFFFF")
         #expect(unknown.primary == Theme.shirtHex && unknown.secondary == nil)

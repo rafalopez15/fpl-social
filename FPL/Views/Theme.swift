@@ -32,13 +32,11 @@ enum Theme {
     static let pitch = Color(hex: pitchHex)
     static let pitchHex: UInt32 = 0x14532D
     static let pitchStripe = Color(hex: 0x17603A)
-    /// Shirts on the pitch for a club with no colors from the API.
+    /// Shirts for clubs with no colors.
     static let shirt = Color(hex: shirtHex)
     static let shirtHex: UInt32 = 0x9CA3AF
-    /// Every goalkeeper's shirt on the pitch: the API has no goalkeeper kits, and a
-    /// fixed color keeps keepers apart from outfield shirts. Pink because no club
-    /// plays in it and it can't be mistaken for the app's green, `warning` yellow
-    /// or `danger` red (yellow clashed with a doubtful flag).
+    /// Every goalkeeper's shirt, since the API has no keeper kits. Pink matches no
+    /// club and no theme color; yellow clashed with the doubtful flag.
     static let goalkeeperShirt = Color(hex: goalkeeperShirtHex)
     static let goalkeeperShirtHex: UInt32 = 0xF472B6
 
@@ -93,7 +91,7 @@ extension Color {
 }
 
 extension UInt32 {
-    /// Parses "#RRGGBB" or "RRGGBB"; nil for any other shape.
+    /// Parses "#RRGGBB" or "RRGGBB"; nil otherwise.
     init?(hexValue string: String?) {
         guard var string = string?.trimmingCharacters(in: .whitespaces) else { return nil }
         if string.hasPrefix("#") { string.removeFirst() }
@@ -120,14 +118,14 @@ extension View {
     }
 }
 
-/// A shirt's colors, as hex so the hairline can be decided by contrast.
+/// A shirt's colors as hex, for the contrast check.
 struct KitColors: Equatable {
     let primary: UInt32
     let secondary: UInt32?
 
     static let goalkeeper = KitColors(primary: Theme.goalkeeperShirtHex, secondary: nil)
 
-    /// Grey when the club has no colors yet.
+    /// Grey when the club has no colors.
     init(primary: String?, secondary: String?) {
         if let value = UInt32(hexValue: primary) {
             self.primary = value
@@ -143,9 +141,7 @@ struct KitColors: Equatable {
         self.secondary = secondary
     }
 
-    /// Dark kits (Newcastle's black, Everton's navy) fall below 3:1 against the
-    /// pitch or the navy bench, so they get a faint hairline. Light and bright
-    /// kits, white included, stand out on their own.
+    /// True below 3:1 against the pitch or bench, e.g. Newcastle's black.
     var needsHairline: Bool {
         min(Self.contrast(primary, Theme.pitchHex), Self.contrast(primary, Theme.backgroundHex)) < 3
     }
