@@ -60,3 +60,8 @@ fastlane/report.xml
 fastlane/Preview.html
 fastlane/screenshots/**/*.png
 fastlane/test_output
+
+# CI outputs, if the summary scripts are run locally
+*.xcresult
+swiftlint.json
+*-summary.md
