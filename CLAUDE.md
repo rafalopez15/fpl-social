@@ -197,3 +197,4 @@ Shared with the fplAPI repo.
 - Swift 5 language mode. View models are `@MainActor`.
 - Tests use Swift Testing (`@Test`, `#expect`), not XCTest. Decoding tests build variants of the fixture in `ElementDecodingTests` (the API's example response for Raya) rather than separate JSON files.
 - Don't commit `.DS_Store`, `xcuserdata` or the local `// xcode: set sdk=iOS` line in `FPLApp.swift`.
+- Keep code comments short: one or two lines saying what the code can't, such as why it's done this way, a non-obvious constraint or what nil means. Don't restate the code, and leave out history (ticket numbers, what was tried, what the user picked); that goes in commits, PRs and this file. The user asked for this after reviewing PR #13.
