@@ -65,9 +65,14 @@ extension Note {
             .map { ($0.note, $0.transfer.playerIn.id == elementID) }
     }
 
-    /// The note saved for a transfer, from the prompt or Profile's transfer list.
+    /// The note saved for a transfer, matched on gameweek and both players: rows
+    /// the API builds for chip weeks can't be matched on time.
     static func forTransfer(_ transfer: Transfer, in notes: [Note]) -> Note? {
-        notes.first { $0.transfer?.time == transfer.time && $0.transfer?.playerIn.id == transfer.elementIn }
+        notes.first {
+            $0.gameweek == transfer.event
+                && $0.transfer?.playerIn.id == transfer.elementIn
+                && $0.transfer?.playerOut.id == transfer.elementOut
+        }
     }
 
     /// Your latest transfer of a player, for the stats popover, with its note if
@@ -89,7 +94,8 @@ extension Note {
         else { return nil }
         let note = forTransfer(latest.transfer, in: notes)
         return PlayerTransfer(transfer: latest.noteTransfer, gameweek: latest.transfer.event,
-                              broughtIn: latest.transfer.elementIn == elementID, note: note)
+                              broughtIn: latest.transfer.elementIn == elementID, note: note,
+                              netPoints: latest.transfer.netPoints)
     }
 }
 
@@ -159,4 +165,6 @@ struct PlayerTransfer {
     let broughtIn: Bool
     /// The transfer note, or nil for transfers made before linking.
     let note: Note?
+    /// The transfer's net points; nil from transfer notes alone or before they're known.
+    var netPoints: Int? = nil
 }

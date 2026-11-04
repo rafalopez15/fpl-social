@@ -865,63 +865,6 @@ final class StubURLProtocol: URLProtocol {
     override func stopLoading() { stopped = true }
 }
 
-@MainActor @Suite(.serialized)
-struct EarlierSquadTests {
-    /// A linked store on its own UserDefaults suite; call `cleanup` when done.
-    func store() throws -> (store: LinkedTeamStore, cleanup: () -> Void) {
-        let suite = "FPLTests.\(UUID().uuidString)"
-        let defaults = try #require(UserDefaults(suiteName: suite))
-        let client = FPLAPIClient(baseURL: URL(string: "https://stub.test/api")!, session: StubURLProtocol.session)
-        let store = LinkedTeamStore(defaults: defaults, client: client)
-        store.link(try ManagerTests.manager())
-        return (store, { defaults.removePersistentDomain(forName: suite) })
-    }
-
-    func stubSquad(managerID: Int) {
-        StubURLProtocol.responses = [
-            "/api/managers/\(managerID)/picks": (200, PicksTests.json),
-            "/api/events/8/live": (200, #"[{"id": 30, "total_points": 8, "minutes": 90}]"#),
-            "/api/elements": (200, "[]"),
-        ]
-    }
-
-    @Test func aCancelledLoadDoesNotShowRetry() async throws {
-        let (store, cleanup) = try store()
-        defer { cleanup() }
-        stubSquad(managerID: try #require(store.linked?.id))
-        StubURLProtocol.delay = 0.5
-
-        // Stepping past gameweek 8 before it loads cancels its task.
-        let load = Task { await store.loadSquad(gameweek: 8) }
-        try await Task.sleep(for: .milliseconds(50))
-        load.cancel()
-        await load.value
-        #expect(store.earlierSquads[8] == .loading)
-        #expect(store.earlierPoints[8] == nil)
-
-        // Coming back to it loads it.
-        StubURLProtocol.delay = 0
-        await store.loadSquad(gameweek: 8)
-        #expect(store.earlierSquads[8] == .loaded(try PicksTests.picks()))
-        #expect(store.earlierPoints[8]?.points == [30: 8])
-    }
-
-    @Test func aFailedLoadShowsRetryAndA404ShowsNoSquad() async throws {
-        let (store, cleanup) = try store()
-        defer { cleanup() }
-        let id = try #require(store.linked?.id)
-        StubURLProtocol.delay = 0
-
-        StubURLProtocol.responses = ["/api/managers/\(id)/picks": (503, #"{"detail": "FPL is unavailable right now"}"#)]
-        await store.loadSquad(gameweek: 8)
-        #expect(store.earlierSquads[8] == .failed)
-
-        StubURLProtocol.responses = [:]
-        await store.loadSquad(gameweek: 2)
-        #expect(store.earlierSquads[2] == SquadState.none)
-    }
-}
-
 struct KitColorTests {
     @Test func teamsDecodeColorsAsOptional() throws {
         let data = Data(#"""
@@ -963,5 +906,213 @@ struct KitColorTests {
         #expect(unknown.primary == Theme.shirtHex && unknown.secondary == nil)
         let badHex = KitColors(primary: "red", secondary: nil)
         #expect(badHex.primary == Theme.shirtHex)
+    }
+}
+
+struct TransferNetTests {
+    static let rows = #"""
+    [{"element_in": 566, "element_out": 114, "event": 9, "time": "2026-10-31T10:08:30.794468Z",
+      "element_in_cost": 50, "element_out_cost": 45, "is_churn": false, "points_in": 8, "points_out": 6, "net_points": 2},
+     {"element_in": 7, "element_out": 8, "event": 3, "time": "2026-09-12T09:00:00.000000Z",
+      "element_in_cost": 60, "element_out_cost": 61, "is_churn": true, "points_in": null, "points_out": null, "net_points": null},
+     {"element_in": 9, "element_out": 10, "event": 3, "time": "2026-09-11T09:00:00.000000Z",
+      "element_in_cost": 55, "element_out_cost": 52, "is_churn": false, "points_in": 3, "points_out": 9, "net_points": -6}]
+    """#
+
+    func transfer(event: Int, net: Int?) -> Transfer {
+        var transfer = TransferTests.transfer(1, 2, day: 1, event: event)
+        transfer.netPoints = net
+        return transfer
+    }
+
+    @Test func decodesNetPointsAndOlderResponses() throws {
+        let transfers = try JSONDecoder.fplAPI.decode([Transfer].self, from: Data(Self.rows.utf8))
+        #expect(transfers[0].netPoints == 2 && transfers[0].pointsIn == 8 && transfers[0].isChurn == false)
+        #expect(transfers[1].isChurn == true && transfers[1].netPoints == nil)
+        // Before FPL-33 the API sent none of these fields.
+        let old = try JSONDecoder.fplAPI.decode(Transfer.self, from: Data(#"""
+        {"element_in": 1, "element_out": 2, "event": 3, "time": "2026-09-11T09:00:00.000000Z",
+         "element_in_cost": 50, "element_out_cost": 45}
+        """#.utf8))
+        #expect(old.isChurn == nil && old.netPoints == nil)
+    }
+
+    @Test func netSubtractsHitsAndSkipsUnknownPoints() {
+        let history = ManagerHistory(current: [
+            GameweekHistory(event: 3, eventTransfers: 2, eventTransfersCost: 4),
+            GameweekHistory(event: 9, eventTransfers: 1),
+        ], chips: [])
+        let transfers = [transfer(event: 9, net: 2), transfer(event: 10, net: nil), transfer(event: 3, net: -6)]
+        #expect(Transfer.net(of: transfers, history: history) == -8)
+        // Nothing to show while no transfer has points, or without hits to subtract.
+        #expect(Transfer.net(of: [transfer(event: 10, net: nil)], history: history) == nil)
+        #expect(Transfer.net(of: transfers, history: nil) == nil)
+    }
+
+    @Test func pointsReadWithSignAndForVoiceOver() {
+        #expect(PointsLabel.text(2) == "+2 pts")
+        #expect(PointsLabel.text(-5) == "\u{2212}5 pts")
+        #expect(PointsLabel.text(0) == "0 pts")
+        #expect(PointsLabel.description(1) == "gained 1 point")
+        #expect(PointsLabel.description(-1) == "lost 1 point")
+        #expect(PointsLabel.description(-5) == "lost 5 points")
+        #expect(PointsLabel.description(0) == "no change in points")
+    }
+
+    @Test func notesMatchOnGameweekAndPlayersNotTime() {
+        let saved = TransferTests.noteTransfer(9, 10, day: 1)
+        let note = Note(text: "Fixtures", gameweek: 3, transfer: saved)
+        // A row the API built for a chip week can carry a different time.
+        var built = TransferTests.transfer(9, 10, day: 5, event: 3)
+        #expect(Note.forTransfer(built, in: [note]) === note)
+        built = TransferTests.transfer(9, 10, day: 1, event: 4)
+        #expect(Note.forTransfer(built, in: [note]) == nil)
+        #expect(Note.forTransfer(TransferTests.transfer(9, 11, day: 1, event: 3), in: [note]) == nil)
+    }
+
+    @Test func aRepeatedSwapKeepsDistinctIDs() {
+        // Unmarked churn can list the same swap twice in one gameweek.
+        let first = NamedTransfer(TransferTests.transfer(9, 10, day: 1, event: 3), names: [:])
+        let again = NamedTransfer(TransferTests.transfer(9, 10, day: 2, event: 3), names: [:])
+        #expect(first.id != again.id)
+    }
+
+    @Test func moreThanASquadOfTransfersInAGameweekIsUnmarkedChurn() {
+        let wildcard = (1...15).map { TransferTests.transfer($0, $0 + 100, day: 1, event: 3) }
+        #expect(!Transfer.hasUnmarkedChurn(wildcard))
+        #expect(Transfer.hasUnmarkedChurn(wildcard + [TransferTests.transfer(50, 51, day: 1, event: 3)]))
+        // Counted per gameweek.
+        #expect(!Transfer.hasUnmarkedChurn(wildcard + [TransferTests.transfer(50, 51, day: 1, event: 4)]))
+    }
+
+    @Test func popoverGetsTheLatestTransfersNet() {
+        var bought = TransferTests.transfer(9, 10, day: 5, event: 9)
+        bought.netPoints = 2
+        let history = [NamedTransfer(bought, names: [9: "Isak", 10: "Watkins"])]
+        #expect(Note.latestTransfer(for: 9, history: history, notes: [])?.netPoints == 2)
+    }
+}
+
+/// Suites that share `StubURLProtocol`'s static responses, run one at a time.
+@Suite(.serialized)
+struct StubbedNetworkTests {}
+
+extension StubbedNetworkTests {
+    @MainActor @Suite
+    struct EarlierSquadTests {
+        /// A linked store on its own UserDefaults suite; call `cleanup` when done.
+        func store() throws -> (store: LinkedTeamStore, cleanup: () -> Void) {
+            let suite = "FPLTests.\(UUID().uuidString)"
+            let defaults = try #require(UserDefaults(suiteName: suite))
+            let client = FPLAPIClient(baseURL: URL(string: "https://stub.test/api")!, session: StubURLProtocol.session)
+            let store = LinkedTeamStore(defaults: defaults, client: client)
+            store.link(try ManagerTests.manager())
+            return (store, { defaults.removePersistentDomain(forName: suite) })
+        }
+
+        func stubSquad(managerID: Int) {
+            StubURLProtocol.responses = [
+                "/api/managers/\(managerID)/picks": (200, PicksTests.json),
+                "/api/events/8/live": (200, #"[{"id": 30, "total_points": 8, "minutes": 90}]"#),
+                "/api/elements": (200, "[]"),
+            ]
+        }
+
+        @Test func aCancelledLoadDoesNotShowRetry() async throws {
+            let (store, cleanup) = try store()
+            defer { cleanup() }
+            stubSquad(managerID: try #require(store.linked?.id))
+            StubURLProtocol.delay = 0.5
+
+            // Stepping past gameweek 8 before it loads cancels its task.
+            let load = Task { await store.loadSquad(gameweek: 8) }
+            try await Task.sleep(for: .milliseconds(50))
+            load.cancel()
+            await load.value
+            #expect(store.earlierSquads[8] == .loading)
+            #expect(store.earlierPoints[8] == nil)
+
+            // Coming back to it loads it.
+            StubURLProtocol.delay = 0
+            await store.loadSquad(gameweek: 8)
+            #expect(store.earlierSquads[8] == .loaded(try PicksTests.picks()))
+            #expect(store.earlierPoints[8]?.points == [30: 8])
+        }
+
+        @Test func aFailedLoadShowsRetryAndA404ShowsNoSquad() async throws {
+            let (store, cleanup) = try store()
+            defer { cleanup() }
+            let id = try #require(store.linked?.id)
+            StubURLProtocol.delay = 0
+
+            StubURLProtocol.responses = ["/api/managers/\(id)/picks": (503, #"{"detail": "FPL is unavailable right now"}"#)]
+            await store.loadSquad(gameweek: 8)
+            #expect(store.earlierSquads[8] == .failed)
+
+            StubURLProtocol.responses = [:]
+            await store.loadSquad(gameweek: 2)
+            #expect(store.earlierSquads[2] == SquadState.none)
+        }
+    }
+
+    @MainActor
+    struct TransferChurnTests {
+        /// A linked store whose transfers since linking are `rows` (all in GW10).
+        func store(rows: [String]) throws -> (store: LinkedTeamStore, cleanup: () -> Void) {
+            let suite = "FPLTests.\(UUID().uuidString)"
+            let defaults = try #require(UserDefaults(suiteName: suite))
+            let client = FPLAPIClient(baseURL: URL(string: "https://stub.test/api")!, session: StubURLProtocol.session)
+            let store = LinkedTeamStore(defaults: defaults, client: client)
+            let manager = try ManagerTests.manager()
+            store.link(manager)
+            StubURLProtocol.delay = 0
+            StubURLProtocol.responses = [
+                "/api/managers/\(manager.id)/transfers": (200, "[" + rows.joined(separator: ",") + "]"),
+                "/api/managers/\(manager.id)/history": (200, #"""
+                {"current": [{"event": 9, "points": 50, "overall_rank": 1000,
+                              "event_transfers": 1, "event_transfers_cost": 4}],
+                 "chips": []}
+                """#),
+                "/api/elements": (200, "[]"),
+            ]
+            return (store, { defaults.removePersistentDomain(forName: suite) })
+        }
+
+        /// A transfer made after linking, for GW10.
+        func row(_ elementIn: Int, net: Int? = nil) -> String {
+            let net = net.map(String.init) ?? "null"
+            return #"{"element_in": \#(elementIn), "element_out": \#(elementIn + 100), "event": 10, "#
+                + #""time": "2099-01-01T10:00:00.000000Z", "element_in_cost": 50, "element_out_cost": 45, "#
+                + #""is_churn": false, "net_points": \#(net)}"#
+        }
+
+        @Test func thePromptWaitsWhenChurnIsUnmarked() async throws {
+            let (store, cleanup) = try store(rows: (1...20).map { row($0) })
+            defer { cleanup() }
+            await store.checkForTransfers()
+            #expect(store.pendingTransfers.isEmpty)
+        }
+
+        @Test func realTransfersArePrompted() async throws {
+            let (store, cleanup) = try store(rows: [row(1), row(2)])
+            defer { cleanup() }
+            await store.checkForTransfers()
+            #expect(store.pendingTransfers.count == 2)
+        }
+
+        @Test func transferNetSubtractsHitsAfterARefresh() async throws {
+            let (store, cleanup) = try store(rows: [row(1, net: 6), row(2)])
+            defer { cleanup() }
+            await store.refresh()
+            #expect(store.transferNet == 2)
+        }
+
+        @Test func theClientDropsChurn() async throws {
+            StubURLProtocol.delay = 0
+            StubURLProtocol.responses = ["/api/managers/1/transfers": (200, TransferNetTests.rows)]
+            let client = FPLAPIClient(baseURL: URL(string: "https://stub.test/api")!, session: StubURLProtocol.session)
+            let transfers = try await client.transfers(managerID: 1)
+            #expect(transfers.map(\.elementIn) == [566, 9])
+        }
     }
 }

@@ -29,6 +29,7 @@ struct ProfileView: View {
                         SquadSection()
 
                         TransfersSection(history: teamStore.transferHistory,
+                                         net: teamStore.transferNet,
                                          failed: teamStore.transferHistoryFailed) {
                             Task { await teamStore.refresh() }
                         }
@@ -147,6 +148,8 @@ private struct LinkedTeamCard: View {
 /// a note shows it underneath. Tapping a transfer opens its note, or starts one.
 private struct TransfersSection: View {
     let history: [NamedTransfer]?
+    /// Hidden while nil.
+    let net: Int?
     let failed: Bool
     let onRetry: () -> Void
 
@@ -156,10 +159,24 @@ private struct TransfersSection: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("TRANSFERS")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
-                .accessibilityAddTraits(.isHeader)
+            HStack(alignment: .firstTextBaseline) {
+                Text("TRANSFERS")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .accessibilityAddTraits(.isHeader)
+                Spacer()
+                if let net {
+                    // Every transfer's net points minus hits.
+                    HStack(spacing: 4) {
+                        Text("Net after hits")
+                            .foregroundStyle(.secondary)
+                        PointsLabel(points: net)
+                    }
+                    .font(.footnote)
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel("Transfer net after hits: \(PointsLabel.description(net))")
+                }
+            }
 
             if let history {
                 if history.isEmpty {
@@ -237,6 +254,9 @@ private struct TransferGameweekCard: View {
                     Spacer()
                     // The chevron says the row opens something: its note, or a new one.
                     HStack(spacing: 6) {
+                        if let net = item.transfer.netPoints {
+                            PointsLabel(points: net)
+                        }
                         Text(item.transfer.time.formatted(.dateTime.weekday(.abbreviated).day().month(.abbreviated)))
                         Image(systemName: "chevron.right")
                             .font(.caption.weight(.semibold))

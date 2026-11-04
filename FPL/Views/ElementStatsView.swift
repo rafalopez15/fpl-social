@@ -258,6 +258,16 @@ private struct TransferSection: View {
         return [price, "replaced by \(transfer.playerIn.webName)"].compactMap { $0 }.joined(separator: ", ")
     }
 
+    /// The net from the player in's side: "+2 pts vs Watkins" when bought,
+    /// "Isak +3 pts vs him" when sold. Nil until the gameweek has finished.
+    private var net: (points: Int, line: (String) -> String)? {
+        guard let points = latest.netPoints else { return nil }
+        let transfer = latest.transfer
+        return latest.broughtIn
+            ? (points, { "\($0) vs \(transfer.playerOut.webName)" })
+            : (points, { "\(transfer.playerIn.webName) \($0) vs him" })
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             Label(heading.uppercased(), systemImage: latest.broughtIn ? "arrow.down.left" : "arrow.up.right")
@@ -267,6 +277,13 @@ private struct TransferSection: View {
                 Text(detail)
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
+            }
+            if let net {
+                Text(net.line(PointsLabel.text(net.points)))
+                    .font(.subheadline.weight(.semibold))
+                    .monospacedDigit()
+                    .foregroundStyle(PointsLabel.color(net.points))
+                    .accessibilityLabel(net.line(PointsLabel.description(net.points)))
             }
             if let note = latest.note {
                 if note.text.isEmpty {

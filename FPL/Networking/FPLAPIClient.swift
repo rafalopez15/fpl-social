@@ -79,9 +79,11 @@ struct FPLAPIClient {
         try await get("managers/\(id)")
     }
 
-    /// `GET /api/managers/{id}/transfers`: the manager's transfers this season, newest first.
+    /// `GET /api/managers/{id}/transfers`: the manager's transfers this season,
+    /// newest first, without churn (swaps undone while planning a chip week).
     func transfers(managerID: Int) async throws -> [Transfer] {
-        try await get("managers/\(managerID)/transfers")
+        let rows: [Transfer] = try await get("managers/\(managerID)/transfers")
+        return rows.filter { $0.isChurn != true }
     }
 
     /// `GET /api/managers/{id}/history`: points per gameweek and chips used this season.

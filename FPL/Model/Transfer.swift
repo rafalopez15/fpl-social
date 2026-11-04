@@ -19,6 +19,27 @@ struct Transfer: Codable, Hashable {
     let elementInCost: Int?
     /// Selling price of the player out, in tenths of a million.
     let elementOutCost: Int?
+    /// A swap undone while planning a Wildcard or Free Hit; the client drops these.
+    var isChurn: Bool? = nil
+    /// Raw points of the player in and out while the player in was owned, and
+    /// their difference. Nil until the gameweek is finished, or if unknown.
+    var pointsIn: Int? = nil
+    var pointsOut: Int? = nil
+    var netPoints: Int? = nil
+
+    /// More transfers in one gameweek than a squad has players, so churn wasn't
+    /// marked (the backend's database was down). The prompt waits for a later check.
+    static func hasUnmarkedChurn(_ transfers: [Transfer]) -> Bool {
+        Dictionary(grouping: transfers, by: \.event).values.contains { $0.count > 15 }
+    }
+
+    /// Net points of the real transfers minus hits taken, for the team card.
+    /// Nil without history or when no transfer has points yet.
+    static func net(of transfers: [Transfer], history: ManagerHistory?) -> Int? {
+        let points = transfers.compactMap(\.netPoints)
+        guard let history, !points.isEmpty else { return nil }
+        return points.reduce(0, +) - history.current.reduce(0) { $0 + ($1.eventTransfersCost ?? 0) }
+    }
 
     /// Transfers made after `date`, oldest first, so a prompt lists them in the order they were made.
     static func made(after date: Date, in transfers: [Transfer]) -> [Transfer] {

@@ -106,7 +106,7 @@ final class LinkedTeamStore: ObservableObject {
 
         guard let transfers = try? await client.transfers(managerID: id) else { return }
         let new = Transfer.made(after: seenUntil, in: transfers)
-        guard !new.isEmpty else { return }
+        guard !new.isEmpty, !Transfer.hasUnmarkedChurn(new) else { return }
 
         // Names for the prompt; without them, wait rather than show bare ids.
         guard await loadPlayers(Transfer.players(in: new)), linked?.id == id else { return }
@@ -165,6 +165,11 @@ final class LinkedTeamStore: ObservableObject {
         } else if livePoints?.gameweek != gameweek {
             livePoints = nil
         }
+    }
+
+    /// Points gained or lost by transfers this season, minus hits; nil until known.
+    var transferNet: Int? {
+        transferHistory.flatMap { Transfer.net(of: $0.map(\.transfer), history: history) }
     }
 
     /// The gameweeks the squad stepper can show: from the one the manager joined
@@ -257,7 +262,10 @@ struct NamedTransfer: Identifiable, Hashable {
     let transfer: Transfer
     let noteTransfer: NoteTransfer
 
-    var id: String { "\(transfer.time.timeIntervalSince1970)-\(transfer.elementIn)" }
+    /// Time too: without churn marked, a chip week can repeat a swap.
+    var id: String {
+        "\(transfer.event)-\(transfer.elementIn)-\(transfer.elementOut)-\(transfer.time.timeIntervalSince1970)"
+    }
 
     /// Groups transfers by gameweek, latest gameweek first and newest transfer
     /// first within each, for Profile's list.
