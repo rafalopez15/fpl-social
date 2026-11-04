@@ -412,7 +412,7 @@
 				DEVELOPMENT_ASSET_PATHS = "\"FPL/Preview Content\"";
 				DEVELOPMENT_TEAM = "";
 				ENABLE_PREVIEWS = YES;
-				FPL_API_BASE_URL = "https://fpl-api-git-fpl-38-kit-colors-fpl-social.vercel.app/api";
+				FPL_API_BASE_URL = "https://fpl-api-six.vercel.app/api";
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = FPL/Info.plist;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
