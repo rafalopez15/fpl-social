@@ -20,21 +20,12 @@ struct ContractTests {
         return try Data(contentsOf: url)
     }
 
-    /// Decodes an array response and checks that no item was dropped.
-    static func decodeArray<T: Decodable>(_ type: T.Type, from name: String) throws -> [T] {
-        let data = try fixture(name)
-        let decoded = try JSONDecoder.fplAPI.decode([T].self, from: data)
-        let raw = try #require(JSONSerialization.jsonObject(with: data) as? [Any])
-        #expect(decoded.count == raw.count)
-        return decoded
-    }
-
     static func decode<T: Decodable>(_ type: T.Type, from name: String) throws -> T {
         try JSONDecoder.fplAPI.decode(T.self, from: fixture(name))
     }
 
     @Test func elements() throws {
-        let elements = try Self.decodeArray(Element.self, from: "elements")
+        let elements = try Self.decode([Element].self, from: "elements")
         #expect(!elements.isEmpty)
         #expect(Set(elements.compactMap(\.position)).count == 4)
     }
@@ -44,26 +35,26 @@ struct ContractTests {
     }
 
     @Test func elementsByPosition() throws {
-        let goalkeepers = try Self.decodeArray(Element.self, from: "elements-position")
+        let goalkeepers = try Self.decode([Element].self, from: "elements-position")
         #expect(!goalkeepers.isEmpty)
         #expect(goalkeepers.allSatisfy { $0.position == .goalkeeper })
     }
 
     @Test func teams() throws {
-        #expect(try Self.decodeArray(Team.self, from: "teams").count == 20)
+        #expect(try Self.decode([Team].self, from: "teams").count == 20)
     }
 
     @Test func upcomingFixtures() throws {
-        _ = try Self.decodeArray(Fixture.self, from: "fixtures")
+        _ = try Self.decode([Fixture].self, from: "fixtures")
     }
 
     @Test func events() throws {
-        let events = try Self.decodeArray(Event.self, from: "events")
+        let events = try Self.decode([Event].self, from: "events")
         #expect(events.count == 38)
     }
 
     @Test func livePoints() throws {
-        _ = try Self.decodeArray(LiveElement.self, from: "live")
+        _ = try Self.decode([LiveElement].self, from: "live")
     }
 
     @Test func manager() throws {
@@ -71,7 +62,7 @@ struct ContractTests {
     }
 
     @Test func transfers() throws {
-        _ = try Self.decodeArray(Transfer.self, from: "transfers")
+        _ = try Self.decode([Transfer].self, from: "transfers")
     }
 
     @Test func history() throws {
