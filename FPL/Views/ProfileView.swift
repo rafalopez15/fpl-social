@@ -20,7 +20,8 @@ struct ProfileView: View {
                 VStack(alignment: .leading, spacing: 16) {
                     if let linked = teamStore.linked, !isChanging {
                         LinkedTeamCard(team: linked, manager: teamStore.manager,
-                                       freeTransfers: teamStore.freeTransfers) {
+                                       freeTransfers: teamStore.freeTransfers,
+                                       transferNet: teamStore.transferNet) {
                             isChanging = true
                         } onUnlink: {
                             confirmingUnlink = true
@@ -65,6 +66,8 @@ private struct LinkedTeamCard: View {
     let manager: Manager?
     /// Free transfers for the next deadline; nil until worked out.
     let freeTransfers: Int?
+    /// Hidden while nil.
+    let transferNet: Int?
     let onChange: () -> Void
     let onUnlink: () -> Void
 
@@ -113,6 +116,23 @@ private struct LinkedTeamCard: View {
                 stat("Team value", money(manager?.lastDeadlineValue))
                 stat("In the bank", money(manager?.lastDeadlineBank))
                 stat("Free transfers", freeTransfers)
+            }
+
+            if let transferNet {
+                HStack(alignment: .top) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(Transfer.pointsText(transferNet))
+                            .font(.headline)
+                            .monospacedDigit()
+                            .foregroundStyle(PointsLabel.color(transferNet))
+                        Text("Transfer net")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel("Transfer net: \(Transfer.pointsDescription(transferNet)), after hits")
+                    Spacer()
+                }
             }
         }
         .padding(16)
@@ -237,6 +257,9 @@ private struct TransferGameweekCard: View {
                     Spacer()
                     // The chevron says the row opens something: its note, or a new one.
                     HStack(spacing: 6) {
+                        if let net = item.transfer.netPoints {
+                            PointsLabel(points: net)
+                        }
                         Text(item.transfer.time.formatted(.dateTime.weekday(.abbreviated).day().month(.abbreviated)))
                         Image(systemName: "chevron.right")
                             .font(.caption.weight(.semibold))
@@ -258,6 +281,23 @@ private struct TransferGameweekCard: View {
         .buttonStyle(.plain)
         .accessibilityElement(children: .combine)
         .accessibilityHint(text.isEmpty ? "Write a note about this transfer" : "Opens the note")
+    }
+}
+
+/// A transfer's net points: "+2 pts" in green, "−5 pts" in red, "0 pts" in grey.
+struct PointsLabel: View {
+    let points: Int
+
+    static func color(_ points: Int) -> Color {
+        points > 0 ? Theme.accent : points < 0 ? Theme.danger : Theme.secondaryText
+    }
+
+    var body: some View {
+        Text(Transfer.pointsText(points))
+            .fontWeight(.semibold)
+            .monospacedDigit()
+            .foregroundStyle(Self.color(points))
+            .accessibilityLabel(Transfer.pointsDescription(points))
     }
 }
 
