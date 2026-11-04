@@ -1,6 +1,6 @@
 # PRs run SwiftLint, build Debug and Release with warnings as errors, run the
-# unit tests with coverage, then post one comment with the results. Pushes to
-# main run the same checks on the merged code.
+# unit tests with coverage under Thread Sanitizer, then post one comment with the
+# results. Pushes to main run the same checks on the merged code.
 
 name: iOS
 
@@ -86,12 +86,17 @@ jobs:
         echo "SIMULATOR_UDID=$UDID" >> "$GITHUB_ENV"
 
     - name: Build and run unit tests
+      # Under Thread Sanitizer. TSan only logs a race by default; halting makes it
+      # fail the test that hit it.
+      env:
+        TEST_RUNNER_TSAN_OPTIONS: halt_on_error=1
       run: |
         xcodebuild test \
           -project FPL.xcodeproj \
           -scheme FPL \
           -destination "id=$SIMULATOR_UDID" \
           -only-testing:FPLTests \
+          -enableThreadSanitizer YES \
           -enableCodeCoverage YES \
           -resultBundlePath Tests.xcresult \
           SWIFT_TREAT_WARNINGS_AS_ERRORS=YES \
