@@ -20,8 +20,7 @@ struct ProfileView: View {
                 VStack(alignment: .leading, spacing: 16) {
                     if let linked = teamStore.linked, !isChanging {
                         LinkedTeamCard(team: linked, manager: teamStore.manager,
-                                       freeTransfers: teamStore.freeTransfers,
-                                       transferNet: teamStore.transferNet) {
+                                       freeTransfers: teamStore.freeTransfers) {
                             isChanging = true
                         } onUnlink: {
                             confirmingUnlink = true
@@ -30,6 +29,7 @@ struct ProfileView: View {
                         SquadSection()
 
                         TransfersSection(history: teamStore.transferHistory,
+                                         net: teamStore.transferNet,
                                          failed: teamStore.transferHistoryFailed) {
                             Task { await teamStore.refresh() }
                         }
@@ -66,8 +66,6 @@ private struct LinkedTeamCard: View {
     let manager: Manager?
     /// Free transfers for the next deadline; nil until worked out.
     let freeTransfers: Int?
-    /// Hidden while nil.
-    let transferNet: Int?
     let onChange: () -> Void
     let onUnlink: () -> Void
 
@@ -117,23 +115,6 @@ private struct LinkedTeamCard: View {
                 stat("In the bank", money(manager?.lastDeadlineBank))
                 stat("Free transfers", freeTransfers)
             }
-
-            if let transferNet {
-                HStack(alignment: .top) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(Transfer.pointsText(transferNet))
-                            .font(.headline)
-                            .monospacedDigit()
-                            .foregroundStyle(PointsLabel.color(transferNet))
-                        Text("Transfer net")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                    .accessibilityElement(children: .ignore)
-                    .accessibilityLabel("Transfer net: \(Transfer.pointsDescription(transferNet)), after hits")
-                    Spacer()
-                }
-            }
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -167,6 +148,8 @@ private struct LinkedTeamCard: View {
 /// a note shows it underneath. Tapping a transfer opens its note, or starts one.
 private struct TransfersSection: View {
     let history: [NamedTransfer]?
+    /// Hidden while nil.
+    let net: Int?
     let failed: Bool
     let onRetry: () -> Void
 
@@ -176,10 +159,24 @@ private struct TransfersSection: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("TRANSFERS")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
-                .accessibilityAddTraits(.isHeader)
+            HStack(alignment: .firstTextBaseline) {
+                Text("TRANSFERS")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .accessibilityAddTraits(.isHeader)
+                Spacer()
+                if let net {
+                    // Every transfer's net points minus hits.
+                    HStack(spacing: 4) {
+                        Text("Net after hits")
+                            .foregroundStyle(.secondary)
+                        PointsLabel(points: net)
+                    }
+                    .font(.footnote)
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel("Transfer net after hits: \(PointsLabel.description(net))")
+                }
+            }
 
             if let history {
                 if history.isEmpty {
@@ -281,23 +278,6 @@ private struct TransferGameweekCard: View {
         .buttonStyle(.plain)
         .accessibilityElement(children: .combine)
         .accessibilityHint(text.isEmpty ? "Write a note about this transfer" : "Opens the note")
-    }
-}
-
-/// A transfer's net points: "+2 pts" in green, "−5 pts" in red, "0 pts" in grey.
-struct PointsLabel: View {
-    let points: Int
-
-    static func color(_ points: Int) -> Color {
-        points > 0 ? Theme.accent : points < 0 ? Theme.danger : Theme.secondaryText
-    }
-
-    var body: some View {
-        Text(Transfer.pointsText(points))
-            .fontWeight(.semibold)
-            .monospacedDigit()
-            .foregroundStyle(Self.color(points))
-            .accessibilityLabel(Transfer.pointsDescription(points))
     }
 }
 

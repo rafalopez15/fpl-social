@@ -41,22 +41,6 @@ struct Transfer: Codable, Hashable {
         return points.reduce(0, +) - history.current.reduce(0) { $0 + ($1.eventTransfersCost ?? 0) }
     }
 
-    /// "+2 pts", "−5 pts" or "0 pts".
-    static func pointsText(_ points: Int) -> String {
-        points > 0 ? "+\(points) pts" : points < 0 ? "\u{2212}\(-points) pts" : "0 pts"
-    }
-
-    /// "gained 2 points", "lost 5 points" or "no change in points", for VoiceOver.
-    static func pointsDescription(_ points: Int) -> String {
-        switch points {
-        case 0: "no change in points"
-        case 1: "gained 1 point"
-        case -1: "lost 1 point"
-        case let p where p > 0: "gained \(p) points"
-        default: "lost \(-points) points"
-        }
-    }
-
     /// Transfers made after `date`, oldest first, so a prompt lists them in the order they were made.
     static func made(after date: Date, in transfers: [Transfer]) -> [Transfer] {
         transfers.filter { $0.time > date }.sorted { $0.time < $1.time }

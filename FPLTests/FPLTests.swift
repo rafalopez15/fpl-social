@@ -950,13 +950,13 @@ struct TransferNetTests {
     }
 
     @Test func pointsReadWithSignAndForVoiceOver() {
-        #expect(Transfer.pointsText(2) == "+2 pts")
-        #expect(Transfer.pointsText(-5) == "\u{2212}5 pts")
-        #expect(Transfer.pointsText(0) == "0 pts")
-        #expect(Transfer.pointsDescription(1) == "gained 1 point")
-        #expect(Transfer.pointsDescription(-1) == "lost 1 point")
-        #expect(Transfer.pointsDescription(-5) == "lost 5 points")
-        #expect(Transfer.pointsDescription(0) == "no change in points")
+        #expect(PointsLabel.text(2) == "+2 pts")
+        #expect(PointsLabel.text(-5) == "\u{2212}5 pts")
+        #expect(PointsLabel.text(0) == "0 pts")
+        #expect(PointsLabel.description(1) == "gained 1 point")
+        #expect(PointsLabel.description(-1) == "lost 1 point")
+        #expect(PointsLabel.description(-5) == "lost 5 points")
+        #expect(PointsLabel.description(0) == "no change in points")
     }
 
     @Test func notesMatchOnGameweekAndPlayersNotTime() {
