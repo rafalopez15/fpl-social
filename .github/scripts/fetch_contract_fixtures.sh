@@ -34,3 +34,8 @@ fetch manager "managers/$manager"
 fetch transfers "managers/$manager/transfers"
 fetch history "managers/$manager/history"
 fetch picks "managers/$manager/picks"
+
+# The manager's own names are personal; the team name is what the app and tests check.
+tmp=$(mktemp)
+jq -c '.player_first_name = "" | .player_last_name = "" | .player_region_name = null' \
+  "$out/manager.json" > "$tmp" && mv "$tmp" "$out/manager.json"
