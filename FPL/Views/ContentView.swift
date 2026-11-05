@@ -43,7 +43,7 @@ struct ContentView: View {
     /// Shared so a note written from any tab is tagged with the current gameweek.
     @StateObject private var gameweeks = GameweekStore()
     /// The FPL team linked on this device (Profile tab), shared for transfer notes.
-    @StateObject private var linkedTeam = LinkedTeamStore()
+    @StateObject private var linkedTeam = LinkedTeamStore(defaults: LaunchOptions.userDefaults())
     @Environment(\.scenePhase) private var scenePhase
     /// Measured tab bar height, passed to screens so lists scroll clear of it.
     @State private var tabBarHeight: CGFloat = 0
@@ -83,7 +83,7 @@ struct ContentView: View {
         }
         .task { await gameweeks.loadIfNeeded() }
         // Notes live on the device.
-        .modelContainer(for: Note.self)
+        .modelContainer(for: Note.self, inMemory: LaunchOptions.isUITesting)
     }
 
     @ViewBuilder

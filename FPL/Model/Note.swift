@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import OSLog
 import SwiftData
 
 /// A personal note, stored on the device with SwiftData. Tagged with the
@@ -167,4 +168,17 @@ struct PlayerTransfer {
     let note: Note?
     /// The transfer's net points; nil from transfer notes alone or before they're known.
     var netPoints: Int? = nil
+}
+
+extension ModelContext {
+    /// Saves now rather than at the next autosave, so a failure is logged with
+    /// the change that caused it. `change` is logged as public: no note text.
+    func saveNotes(_ change: String) {
+        do {
+            try save()
+            Logger.notes.info("\(change, privacy: .public)")
+        } catch {
+            Logger.notes.error("Couldn't save (\(change, privacy: .public)): \(error.logSummary, privacy: .public) \(error)")
+        }
+    }
 }

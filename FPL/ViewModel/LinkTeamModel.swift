@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import OSLog
 
 /// The link flow: type a manager ID, look the team up, then confirm it.
 @MainActor
@@ -44,8 +45,11 @@ final class LinkTeamModel: ObservableObject {
         state = .loading
         do {
             state = .found(try await client.manager(id: id))
+            Logger.linkedTeam.info("Found team \(id, privacy: .private)")
         } catch {
-            state = .failed(LinkError(error))
+            let linkError = LinkError(error)
+            state = .failed(linkError)
+            Logger.linkedTeam.notice("Couldn't look up team \(id, privacy: .private): \(String(describing: linkError), privacy: .public)")
         }
     }
 

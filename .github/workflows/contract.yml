@@ -1,0 +1,57 @@
+# Every day, fetches production fplAPI responses and checks the app's models
+# still decode them, so a backend change that breaks the app fails here instead
+# of on a phone. GitHub emails the failure of a scheduled run.
+
+name: API contract
+
+on:
+  schedule:
+    - cron: "0 7 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  contract:
+    name: Decode production responses
+    runs-on: macos-26
+    steps:
+    - uses: actions/checkout@v5
+
+    - name: Select Xcode
+      uses: maxim-lobanov/setup-xcode@v1
+      with:
+        xcode-version: latest-stable
+
+    - name: Pick an iPhone simulator
+      run: |
+        UDID=$(xcrun simctl list devices available --json \
+          | jq -r '[.devices | to_entries[] | select(.key | test("iOS")) | .value[]
+                    | select(.name | startswith("iPhone"))] | last | .udid')
+        if [ -z "$UDID" ] || [ "$UDID" = "null" ]; then
+          echo "No iPhone simulator available" >&2
+          xcrun simctl list devices available
+          exit 1
+        fi
+        echo "SIMULATOR_UDID=$UDID" >> "$GITHUB_ENV"
+
+    - name: Fetch production responses
+      # Replaces the committed fixtures for this run only.
+      run: .github/scripts/fetch_contract_fixtures.sh https://fpl-api-six.vercel.app/api
+
+    - name: Decode them
+      run: |
+        xcodebuild test \
+          -project FPL.xcodeproj \
+          -scheme FPL \
+          -destination "id=$SIMULATOR_UDID" \
+          -only-testing:FPLTests/ContractTests \
+          -parallel-testing-enabled NO \
+          -enableCodeCoverage NO \
+          -resultBundlePath Contract.xcresult \
+          CODE_SIGNING_ALLOWED=NO
+
+    - name: Summarize
+      if: always()
+      run: python3 .github/scripts/summarize_xcresult.py Contract.xcresult contract-summary.md

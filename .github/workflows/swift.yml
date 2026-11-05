@@ -1,6 +1,6 @@
 # PRs run SwiftLint, build Debug and Release with warnings as errors, run the
-# unit tests with coverage, then post one comment with the results. Pushes to
-# main run the same checks on the merged code.
+# unit tests with coverage under Thread Sanitizer and the UI tests, then post one
+# comment with the results. Pushes to main run the same checks on the merged code.
 
 name: iOS
 
@@ -10,6 +10,7 @@ on:
     paths:
       - "FPL/**"
       - "FPLTests/**"
+      - "FPLUITests/**"
       - "FPL.xcodeproj/**"
       - ".swiftlint.yml"
       - ".github/workflows/swift.yml"
@@ -19,6 +20,7 @@ on:
     paths:
       - "FPL/**"
       - "FPLTests/**"
+      - "FPLUITests/**"
       - "FPL.xcodeproj/**"
       - ".swiftlint.yml"
       - ".github/workflows/swift.yml"
@@ -86,20 +88,51 @@ jobs:
         echo "SIMULATOR_UDID=$UDID" >> "$GITHUB_ENV"
 
     - name: Build and run unit tests
+      # Under Thread Sanitizer. TSan only logs a race by default; halting makes it
+      # fail the test that hit it, and its report is in the saved log. Parallel
+      # testing would clone and boot a second simulator, which takes minutes here.
+      env:
+        TEST_RUNNER_TSAN_OPTIONS: halt_on_error=1
       run: |
+        set -o pipefail
         xcodebuild test \
           -project FPL.xcodeproj \
           -scheme FPL \
           -destination "id=$SIMULATOR_UDID" \
           -only-testing:FPLTests \
+          -parallel-testing-enabled NO \
+          -enableThreadSanitizer YES \
           -enableCodeCoverage YES \
           -resultBundlePath Tests.xcresult \
           SWIFT_TREAT_WARNINGS_AS_ERRORS=YES \
-          CODE_SIGNING_ALLOWED=NO
+          CODE_SIGNING_ALLOWED=NO 2>&1 | tee unit-tests.log
 
     - name: Summarize test results
       if: always()
-      run: python3 .github/scripts/summarize_xcresult.py Tests.xcresult tests-summary.md
+      run: python3 .github/scripts/summarize_xcresult.py Tests.xcresult tests-summary.md --tsan-log unit-tests.log
+
+    - name: Run UI tests
+      # Against FPLUITests' local fixture server, not production. Coverage is the
+      # unit tests' figure only.
+      if: ${{ !cancelled() }}
+      run: |
+        xcodebuild test \
+          -project FPL.xcodeproj \
+          -scheme FPL \
+          -destination "id=$SIMULATOR_UDID" \
+          -only-testing:FPLUITests \
+          -parallel-testing-enabled NO \
+          -enableCodeCoverage NO \
+          -resultBundlePath UITests.xcresult \
+          SWIFT_TREAT_WARNINGS_AS_ERRORS=YES \
+          CODE_SIGNING_ALLOWED=NO
+
+    - name: Add the UI tests to the summary
+      if: always()
+      run: |
+        python3 .github/scripts/summarize_xcresult.py UITests.xcresult ui-tests-summary.md "UI tests"
+        printf '\n' >> tests-summary.md
+        cat ui-tests-summary.md >> tests-summary.md
 
     - name: Build Release
       id: release

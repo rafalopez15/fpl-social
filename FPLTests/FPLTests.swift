@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import os
 import Testing
 @testable import FPL
 
@@ -836,7 +837,7 @@ struct PicksTests {
 /// Answers requests from `StubURLProtocol.responses` by path, after `delay`, so
 /// a test can cancel a load while its requests are still in flight. Used only
 /// through `session`, never registered globally.
-final class StubURLProtocol: URLProtocol {
+final class StubURLProtocol: URLProtocol, @unchecked Sendable {
     nonisolated(unsafe) static var responses: [String: (status: Int, body: String)] = [:]
     nonisolated(unsafe) static var delay: TimeInterval = 0
 
@@ -846,14 +847,15 @@ final class StubURLProtocol: URLProtocol {
         return URLSession(configuration: configuration)
     }
 
-    private var stopped = false
+    /// Set by `stopLoading` on URLSession's thread, read on the delayed response's.
+    private let stopped = OSAllocatedUnfairLock(initialState: false)
 
     override static func canInit(with request: URLRequest) -> Bool { true }
     override static func canonicalRequest(for request: URLRequest) -> URLRequest { request }
 
     override func startLoading() {
         DispatchQueue.global().asyncAfter(deadline: .now() + Self.delay) { [self] in
-            guard !stopped, let url = request.url else { return }
+            guard !stopped.withLock({ $0 }), let url = request.url else { return }
             let stub = Self.responses[url.path] ?? (404, #"{"detail": "Not found"}"#)
             let response = HTTPURLResponse(url: url, statusCode: stub.status, httpVersion: nil, headerFields: nil)!
             client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
@@ -862,7 +864,7 @@ final class StubURLProtocol: URLProtocol {
         }
     }
 
-    override func stopLoading() { stopped = true }
+    override func stopLoading() { stopped.withLock { $0 = true } }
 }
 
 struct KitColorTests {
@@ -1114,5 +1116,36 @@ extension StubbedNetworkTests {
             let transfers = try await client.transfers(managerID: 1)
             #expect(transfers.map(\.elementIn) == [566, 9])
         }
+    }
+}
+
+struct LoggingTests {
+    @Test func routeHidesTheManagerID() {
+        #expect(FPLAPIClient.route("managers/3039435/transfers") == "managers/{id}/transfers")
+        #expect(FPLAPIClient.route("managers/1") == "managers/{id}")
+        #expect(FPLAPIClient.route("events/9/live") == "events/9/live")
+    }
+
+    @Test func decodingSummaryNamesTheKeyAndPath() throws {
+        var object = try ElementDecodingTests.fixtureObject()
+        object.removeValue(forKey: "web_name")
+        let data = try JSONSerialization.data(withJSONObject: [object])
+        let error = try #require(throws: DecodingError.self) {
+            try JSONDecoder.fplAPI.decode([Element].self, from: data)
+        }
+        #expect(error.logSummary == "missing key webName at [0]")
+    }
+
+    @Test func decodingSummaryForAWrongType() throws {
+        var object = try ElementDecodingTests.fixtureObject()
+        object["now_cost"] = "62"
+        let error = try #require(throws: DecodingError.self) {
+            try ElementDecodingTests.decode(object)
+        }
+        #expect(error.logSummary.hasPrefix("expected Int at nowCost"))
+    }
+
+    @Test func otherErrorsLogDomainAndCode() {
+        #expect(URLError(.notConnectedToInternet).logSummary == "NSURLErrorDomain -1009")
     }
 }

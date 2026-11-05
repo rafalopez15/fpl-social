@@ -175,9 +175,11 @@ struct NoteEditorView: View {
             note.text = trimmed
             note.players = players
             note.updatedAt = .now
+            context.saveNotes("Edited a note")
         } else {
             context.insert(Note(text: trimmed, gameweek: gameweek, players: players,
                                 transfer: newNoteTransfer, createdAt: date))
+            context.saveNotes("Added a note")
         }
         dismiss()
     }

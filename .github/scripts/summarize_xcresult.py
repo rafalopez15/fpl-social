@@ -1,12 +1,18 @@
 """Summarize an Xcode test result bundle: results, failures and line coverage.
 
-    python summarize_xcresult.py Tests.xcresult [tests-summary.md]
+    python summarize_xcresult.py Tests.xcresult [tests-summary.md] [label] [--tsan-log xcodebuild.log]
+
+`label` names the tests in the heading ("UI tests"); it defaults to "tests".
+`--tsan-log` reads xcodebuild's output for Thread Sanitizer reports: a race aborts
+the test process, so the result bundle only shows a crashed test.
 
 Reads `xcrun xcresulttool get test-results summary` (covers Swift Testing and
 XCTest) and `xcrun xccov view --report --json` for the app target's coverage.
 """
+import argparse
 import json
 import os
+import re
 import subprocess
 import sys
 from urllib.parse import unquote, urlparse
@@ -68,6 +74,43 @@ def read_coverage(bundle):
     return target, files
 
 
+ANSI = re.compile(r"\x1b\[[0-9;]*m")
+
+
+def read_tsan_reports(log_path):
+    """Each Thread Sanitizer report in the log: its summary and the top frame of each access."""
+    if not log_path or not os.path.exists(log_path):
+        return []
+    reports, current = [], None
+    with open(log_path, errors="replace") as log:
+        for raw in log:
+            line = ANSI.sub("", raw).strip()
+            if line.startswith("WARNING: ThreadSanitizer:"):
+                current = {"summary": line.removeprefix("WARNING: ThreadSanitizer: "), "frames": []}
+                in_access = False
+            elif current is None:
+                continue
+            elif line.endswith(":") and not line.startswith("#"):
+                # "Modifying access of ... by thread T17:", "Previous write of size 1 ...:",
+                # then "Location is heap block ..." and thread creation, which aren't the race.
+                in_access = " access " in line or " write of " in line or " read of " in line
+            elif in_access and line.startswith("#0 "):
+                current["frames"].append(line.removeprefix("#0 "))
+            elif line.startswith("SUMMARY: ThreadSanitizer:"):
+                current["summary"] = line.removeprefix("SUMMARY: ThreadSanitizer: ")
+                reports.append(current)
+                current = None
+    return reports
+
+
+def tsan_markdown(reports):
+    lines = ["", f"### Thread Sanitizer found {len(reports)} race{'s' if len(reports) != 1 else ''}", ""]
+    for report in reports:
+        lines.append(f"- {report['summary']}")
+        lines += [f"  - `{frame}`" for frame in report["frames"]]
+    return "\n".join(lines) + "\n"
+
+
 def build_failure_markdown(errors):
     lines = ["## ❌ Build failed, tests didn't run", "", "| Where | Error |", "|---|---|"]
     for location, message in errors:
@@ -76,10 +119,10 @@ def build_failure_markdown(errors):
     return "\n".join(lines) + "\n"
 
 
-def to_markdown(results, coverage):
+def to_markdown(results, coverage, label="tests", tsan_reports=()):
     total = results["total"]
     percent = results["passed"] / total * 100 if total else 0.0
-    status = f"❌ {results['failed']} test(s) failed" if results["failed"] else "✅ All tests passed"
+    status = f"❌ {results['failed']} of the {label} failed" if results["failed"] else f"✅ All {label} passed"
     lines = [f"## {status}", "",
              "| Total | Passed | Failed | Skipped | Pass rate |", "|---|---|---|---|---|",
              f"| {total} | {results['passed']} | {results['failed']} | {results['skipped']} | {percent:.1f}% |"]
@@ -87,6 +130,8 @@ def to_markdown(results, coverage):
         lines += ["", "### Failures", "", "| Test | Error |", "|---|---|"]
         for name, message in results["failures"]:
             lines.append(f"| `{name}` | {message.replace('|', chr(92) + '|')} |")
+    if tsan_reports:
+        lines.append(tsan_markdown(tsan_reports).rstrip("\n"))
     if coverage:
         target, files = coverage
         lines += ["", f"### Coverage: {target['lineCoverage'] * 100:.1f}% of lines in `{APP_TARGET}` "
@@ -100,8 +145,13 @@ def to_markdown(results, coverage):
 
 
 def main():
-    bundle = sys.argv[1] if len(sys.argv) > 1 else "Tests.xcresult"
-    markdown_path = sys.argv[2] if len(sys.argv) > 2 else None
+    parser = argparse.ArgumentParser()
+    parser.add_argument("bundle", nargs="?", default="Tests.xcresult")
+    parser.add_argument("markdown_path", nargs="?")
+    parser.add_argument("label", nargs="?", default="tests")
+    parser.add_argument("--tsan-log")
+    args = parser.parse_args()
+    bundle, markdown_path, label = args.bundle, args.markdown_path, args.label
     if not os.path.exists(bundle):
         message = f"No result bundle at {bundle}; the build likely failed before tests ran."
         print(message)
@@ -121,7 +171,10 @@ def main():
     print(f"{results['passed']}/{results['total']} passed, {results['failed']} failed, {results['skipped']} skipped")
     for name, message in results["failures"]:
         print(f"  FAILED {name}: {message}")
-    write_markdown(to_markdown(results, coverage), markdown_path)
+    reports = read_tsan_reports(args.tsan_log)
+    for report in reports:
+        print(f"  TSAN {report['summary']}")
+    write_markdown(to_markdown(results, coverage, label, reports), markdown_path)
 
 
 if __name__ == "__main__":

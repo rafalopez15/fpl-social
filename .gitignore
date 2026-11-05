@@ -65,3 +65,6 @@ fastlane/test_output
 *.xcresult
 swiftlint.json
 *-summary.md
+
+# Python bytecode from running the CI scripts
+__pycache__/
