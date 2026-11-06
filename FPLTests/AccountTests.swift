@@ -197,6 +197,16 @@ struct AccountStoreTests {
         await #expect(throws: SignInError.unavailable) { try await rejecting.verify(email: "a@b.co", code: "123456") }
     }
 
+    @Test func callsWhileSignedOutDontSayYouWereSignedOut() async {
+        let auth = FakeAuth()
+        let me = FakeMe(accepting: "first")
+        let store = AccountStore(auth: auth) { try await me($0) }
+        await #expect(throws: SignInError.signedOut) { try await store.withAccessToken { try await me($0) } }
+        #expect(store.signedOutReason == nil)
+        #expect(auth.state.signOuts == 0)
+        #expect(me.count == 0)
+    }
+
     @Test func signingOut() async throws {
         let auth = FakeAuth(email: "a@b.co")
         let store = AccountStore(auth: auth)

@@ -73,8 +73,10 @@ final class AccountStore: ObservableObject {
 
     /// Runs an account request with an access token. A 401 refreshes the session
     /// and tries once more; a second 401, or a session that can't be refreshed,
-    /// signs out and throws `SignInError.signedOut`.
+    /// signs out and throws `SignInError.signedOut`. Throws the same, without
+    /// "You were signed out", when you weren't signed in to begin with.
     func withAccessToken<T: Sendable>(_ call: @Sendable (String) async throws -> T) async throws -> T {
+        guard case .signedIn = state else { throw SignInError.signedOut }
         do {
             return try await authorized(call)
         } catch SignInError.signedOut {
