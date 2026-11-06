@@ -15,6 +15,8 @@ extension Logger {
     static let notes = Logger(subsystem: subsystem, category: "notes")
     /// Linking a team and checking it for transfers.
     static let linkedTeam = Logger(subsystem: subsystem, category: "linkedTeam")
+    /// Signing in and out, and calls that need an account. Emails are never logged.
+    static let account = Logger(subsystem: subsystem, category: "account")
 }
 
 extension Error {

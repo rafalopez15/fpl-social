@@ -7,7 +7,7 @@ import SwiftData
 import SwiftUI
 
 /// The Profile tab: link your FPL team by manager ID, then see it with options
-/// to change or unlink it. Accounts and sign-in come later (FPL-11).
+/// to change or unlink it. The Account card under it signs you in or out.
 struct ProfileView: View {
     @EnvironmentObject private var teamStore: LinkedTeamStore
     /// True while picking a different team; the current link stays until a new one is confirmed.
@@ -26,6 +26,8 @@ struct ProfileView: View {
                             confirmingUnlink = true
                         }
 
+                        AccountCard()
+
                         SquadSection()
 
                         TransfersSection(history: teamStore.transferHistory,
@@ -38,6 +40,8 @@ struct ProfileView: View {
                             teamStore.link(manager)
                             isChanging = false
                         }
+
+                        AccountCard()
                     }
                 }
                 .padding(16)
@@ -431,5 +435,7 @@ private struct ConfirmTeamCard: View {
 #Preview {
     ProfileView()
         .environmentObject(LinkedTeamStore())
+        // No sign-in in previews: they can't reach a preview API, so the card stays hidden.
+        .environmentObject(AccountStore(auth: nil))
         .modelContainer(for: Note.self, inMemory: true)
 }

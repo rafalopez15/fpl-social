@@ -6,6 +6,10 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		0A11CE0000000000000000B1 /* Auth in Frameworks */ = {isa = PBXBuildFile; productRef = 0A11CE0000000000000000D1 /* Auth */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXContainerItemProxy section */
 		05DF9A712CD9C8B900DEC1D4 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -65,6 +69,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				0A11CE0000000000000000B1 /* Auth in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -125,6 +130,7 @@
 			);
 			name = FPL;
 			packageProductDependencies = (
+				0A11CE0000000000000000D1 /* Auth */,
 			);
 			productName = FPL;
 			productReference = 05DF9A602CD9C8B900DEC1D4 /* FPL.app */;
@@ -208,6 +214,9 @@
 			);
 			mainGroup = 05DF9A572CD9C8B900DEC1D4;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				0A11CE0000000000000000E1 /* XCRemoteSwiftPackageReference "supabase-swift" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 05DF9A612CD9C8B900DEC1D4 /* Products */;
 			projectDirPath = "";
@@ -342,6 +351,7 @@
 				SDKROOT = iphoneos;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_TREAT_WARNINGS_AS_ERRORS = "$(FPL_WARNINGS_AS_ERRORS)";
 			};
 			name = Debug;
 		};
@@ -397,6 +407,7 @@
 				MTL_FAST_MATH = YES;
 				SDKROOT = iphoneos;
 				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_TREAT_WARNINGS_AS_ERRORS = "$(FPL_WARNINGS_AS_ERRORS)";
 				VALIDATE_PRODUCT = YES;
 			};
 			name = Release;
@@ -428,6 +439,8 @@
 				PRODUCT_BUNDLE_IDENTIFIER = rafael.lopez.FPL;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
+				SUPABASE_PUBLISHABLE_KEY = "sb_publishable_mxJQW2sWlgmT-dpw2jBncw_zPJodKur";
+				SUPABASE_URL = "https://ltasgegihkapmdqlkaov.supabase.co";
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 6.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
@@ -461,6 +474,8 @@
 				PRODUCT_BUNDLE_IDENTIFIER = rafael.lopez.FPL;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
+				SUPABASE_PUBLISHABLE_KEY = "";
+				SUPABASE_URL = "";
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 6.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
@@ -575,6 +590,25 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		0A11CE0000000000000000E1 /* XCRemoteSwiftPackageReference "supabase-swift" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/supabase/supabase-swift";
+			requirement = {
+				kind = exactVersion;
+				version = 2.55.4;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		0A11CE0000000000000000D1 /* Auth */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 0A11CE0000000000000000E1 /* XCRemoteSwiftPackageReference "supabase-swift" */;
+			productName = Auth;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 05DF9A582CD9C8B900DEC1D4 /* Project object */;
 }

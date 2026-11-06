@@ -4,6 +4,10 @@
 <dict>
 	<key>FPLAPIBaseURL</key>
 	<string>$(FPL_API_BASE_URL)</string>
+	<key>SupabaseURL</key>
+	<string>$(SUPABASE_URL)</string>
+	<key>SupabasePublishableKey</key>
+	<string>$(SUPABASE_PUBLISHABLE_KEY)</string>
 	<key>UIUserInterfaceStyle</key>
 	<string>Dark</string>
 	<key>NSAppTransportSecurity</key>
