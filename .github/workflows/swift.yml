@@ -104,7 +104,7 @@ jobs:
           -enableThreadSanitizer YES \
           -enableCodeCoverage YES \
           -resultBundlePath Tests.xcresult \
-          SWIFT_TREAT_WARNINGS_AS_ERRORS=YES \
+          FPL_WARNINGS_AS_ERRORS=YES \
           CODE_SIGNING_ALLOWED=NO 2>&1 | tee unit-tests.log
 
     - name: Summarize test results
@@ -124,7 +124,7 @@ jobs:
           -parallel-testing-enabled NO \
           -enableCodeCoverage NO \
           -resultBundlePath UITests.xcresult \
-          SWIFT_TREAT_WARNINGS_AS_ERRORS=YES \
+          FPL_WARNINGS_AS_ERRORS=YES \
           CODE_SIGNING_ALLOWED=NO
 
     - name: Add the UI tests to the summary
@@ -144,7 +144,7 @@ jobs:
           -scheme FPL \
           -configuration Release \
           -destination "generic/platform=iOS Simulator" \
-          SWIFT_TREAT_WARNINGS_AS_ERRORS=YES \
+          FPL_WARNINGS_AS_ERRORS=YES \
           CODE_SIGNING_ALLOWED=NO
 
     - name: Add the Release build to the summary
