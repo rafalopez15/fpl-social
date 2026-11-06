@@ -16,6 +16,7 @@ struct PlayerNotesView: View {
     @Environment(\.modelContext) private var context
     @EnvironmentObject private var gameweeks: GameweekStore
     @EnvironmentObject private var noteSync: NoteSync
+    @EnvironmentObject private var account: AccountStore
     @Query private var notes: [Note]
     @State private var editing: Note?
     /// The last deleted note, while its undo toast is showing.
@@ -80,7 +81,7 @@ struct PlayerNotesView: View {
                         Button {
                             editing = note
                         } label: {
-                            NoteRow(note: note)
+                            NoteRow(note: note, isDeviceOnly: account.userID != nil && note.accountID == nil)
                         }
                         .foregroundStyle(Theme.text)
                         .themedRow()
