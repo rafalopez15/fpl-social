@@ -44,6 +44,8 @@ struct ContentView: View {
     @StateObject private var gameweeks = GameweekStore()
     /// The FPL team linked on this device (Profile tab), shared for transfer notes.
     @StateObject private var linkedTeam = LinkedTeamStore(defaults: LaunchOptions.userDefaults())
+    // UI tests run signed out, whatever session the simulator's keychain holds.
+    @StateObject private var account = AccountStore(auth: LaunchOptions.isUITesting ? nil : SupabaseAuthService.configured())
     @Environment(\.scenePhase) private var scenePhase
     /// Measured tab bar height, passed to screens so lists scroll clear of it.
     @State private var tabBarHeight: CGFloat = 0
@@ -63,6 +65,7 @@ struct ContentView: View {
         .background(Theme.background.ignoresSafeArea())
         .environmentObject(gameweeks)
         .environmentObject(linkedTeam)
+        .environmentObject(account)
         // Transfer notes (FPL-12): FPL doesn't push transfers, so look for new
         // ones on launch, when a team is linked, and on returning to the app.
         .task(id: linkedTeam.linked?.id) { await linkedTeam.checkForTransfers() }
