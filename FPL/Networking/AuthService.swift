@@ -22,6 +22,9 @@ protocol AuthService: Sendable {
     func refreshedAccessToken() async throws -> String
     /// Ends the session on this device. Never fails: the local session is removed regardless.
     func signOut() async
+    /// Yields each time the saved session goes away, including when the SDK drops
+    /// it after a failed refresh. Also yields for `signOut()`.
+    var sessionEnded: AsyncStream<Void> { get }
 }
 
 /// Supabase Auth through supabase-swift, which saves the session in the
@@ -75,6 +78,23 @@ struct SupabaseAuthService: AuthService {
         } catch {
             // The SDK has already removed the local session; only telling Supabase failed.
             Logger.account.notice("Couldn't end the session with Supabase: \(error.logSummary, privacy: .public)")
+        }
+    }
+
+    var sessionEnded: AsyncStream<Void> {
+        let changes = client.authStateChanges
+        return AsyncStream { continuation in
+            let task = Task {
+                for await (event, session) in changes {
+                    switch event {
+                    case .signedOut, .userDeleted: continuation.yield()
+                    case .initialSession where session == nil: continuation.yield()
+                    default: break
+                    }
+                }
+                continuation.finish()
+            }
+            continuation.onTermination = { _ in task.cancel() }
         }
     }
 
