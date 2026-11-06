@@ -12,6 +12,7 @@ struct NoteEditorView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var context
     @EnvironmentObject private var gameweeks: GameweekStore
+    @EnvironmentObject private var noteSync: NoteSync
 
     /// The note being edited or read, or nil for a new note.
     private let note: Note?
@@ -21,6 +22,8 @@ struct NoteEditorView: View {
     private let newNoteGameweek: Int?
     /// The transfer a new note is about, from Profile's transfer list.
     private let newNoteTransfer: NoteTransfer?
+    /// The FPL team that made `newNoteTransfer`.
+    private let managerID: Int?
     @FocusState private var isEditorFocused: Bool
 
     /// - Parameters:
@@ -29,10 +32,13 @@ struct NoteEditorView: View {
     ///   - players: Players to link to a new note, e.g. from the stats popover.
     ///   - transfer: Makes a new note a transfer note, e.g. from Profile's transfer list.
     ///     Its player in is linked; pass the transfer's gameweek as `gameweek`.
-    init(note: Note? = nil, gameweek: Int? = nil, players: [NotePlayer] = [], transfer: NoteTransfer? = nil) {
+    ///   - managerID: The FPL team that made `transfer`.
+    init(note: Note? = nil, gameweek: Int? = nil, players: [NotePlayer] = [], transfer: NoteTransfer? = nil,
+         managerID: Int? = nil) {
         self.note = note
         newNoteGameweek = gameweek
         newNoteTransfer = note == nil ? transfer : nil
+        self.managerID = note == nil && transfer != nil ? managerID : nil
         _text = State(initialValue: note?.text ?? "")
         _players = State(initialValue: note?.players ?? transfer.map { [$0.playerIn] } ?? players)
     }
@@ -153,6 +159,9 @@ struct NoteEditorView: View {
     private var editor: some View {
         TextEditor(text: $text)
             .focused($isEditorFocused)
+            .onChange(of: text) {
+                if text.count > Note.maxTextLength { text = String(text.prefix(Note.maxTextLength)) }
+            }
             .scrollContentBackground(.hidden)
             .padding(8)
             .background(Theme.surface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
@@ -175,10 +184,13 @@ struct NoteEditorView: View {
             note.text = trimmed
             note.players = players
             note.updatedAt = .now
+            noteSync.changed(note)
             context.saveNotes("Edited a note")
         } else {
-            context.insert(Note(text: trimmed, gameweek: gameweek, players: players,
-                                transfer: newNoteTransfer, createdAt: date))
+            let note = Note(text: trimmed, gameweek: gameweek, players: players,
+                            transfer: newNoteTransfer, managerID: managerID, createdAt: date)
+            context.insert(note)
+            noteSync.added(note)
             context.saveNotes("Added a note")
         }
         dismiss()
@@ -219,5 +231,6 @@ private struct PlayerChip: View {
 #Preview {
     NoteEditorView(players: [NotePlayer(id: 1, webName: "Isak")])
         .environmentObject(GameweekStore())
-        .modelContainer(for: Note.self, inMemory: true)
+        .environmentObject(NoteSync.preview)
+        .modelContainer(NoteSync.preview.container)
 }

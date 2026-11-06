@@ -13,6 +13,7 @@ struct NotesView: View {
     @EnvironmentObject private var gameweeks: GameweekStore
     /// For your points and rank in each gameweek header, when a team is linked.
     @EnvironmentObject private var linkedTeam: LinkedTeamStore
+    @EnvironmentObject private var noteSync: NoteSync
     @Query private var notes: [Note]
     @State private var editor: EditorTarget?
     /// The last deleted note, while its undo toast is showing.
@@ -52,7 +53,9 @@ struct NotesView: View {
             .overlay(alignment: .bottom) {
                 if let deleted {
                     UndoToast(message: "Note deleted") {
-                        context.insert(deleted.restored())
+                        let note = deleted.restored()
+                        context.insert(note)
+                        noteSync.changed(note)
                         context.saveNotes("Restored a deleted note")
                         withAnimation { self.deleted = nil }
                     }
@@ -113,6 +116,7 @@ struct NotesView: View {
                     .onDelete { offsets in
                         for note in offsets.map({ section.notes[$0] }) {
                             withAnimation { deleted = DeletedNote(note) }
+                            noteSync.deleting(note)
                             context.delete(note)
                         }
                         context.saveNotes("Deleted \(offsets.count) note(s)")
@@ -352,5 +356,7 @@ struct NoteRow: View {
     NotesView()
         .environmentObject(GameweekStore())
         .environmentObject(LinkedTeamStore())
-        .modelContainer(for: Note.self, inMemory: true)
+        .environmentObject(AccountStore(auth: nil))
+        .environmentObject(NoteSync.preview)
+        .modelContainer(NoteSync.preview.container)
 }

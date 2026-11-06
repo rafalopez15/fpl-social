@@ -23,7 +23,7 @@ final class NoteSync: ObservableObject {
     @Published private(set) var pendingCount = 0
 
     /// Held so the context stays usable: a context doesn't keep its container alive.
-    private let container: ModelContainer
+    let container: ModelContainer
     private let context: ModelContext
     private let account: AccountStore
     private let api: any NotesAPI
@@ -326,6 +326,19 @@ final class NoteSync: ObservableObject {
         let userID = account.userID
         pendingCount = allPendingWrites().count(where: { $0.accountID == userID })
     }
+}
+
+extension NoteSync {
+    /// For previews: signed out, in memory.
+    static let preview: NoteSync = {
+        do {
+            let container = try ModelContainer(for: Note.self, PendingNoteWrite.self,
+                                               configurations: ModelConfiguration(isStoredInMemoryOnly: true))
+            return NoteSync(container: container, account: AccountStore(auth: nil))
+        } catch {
+            fatalError("Couldn't create the preview notes store: \(error)")
+        }
+    }()
 }
 
 /// Lookups in the store and UserDefaults.

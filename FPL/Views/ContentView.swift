@@ -5,6 +5,7 @@
 //  Created by Rafael Lopez on 11/4/24.
 //
 
+import OSLog
 import SwiftData
 import SwiftUI
 
@@ -44,8 +45,8 @@ struct ContentView: View {
     @StateObject private var gameweeks = GameweekStore()
     /// The FPL team linked on this device (Profile tab), shared for transfer notes.
     @StateObject private var linkedTeam = LinkedTeamStore(defaults: LaunchOptions.userDefaults())
-    // UI tests run signed out, whatever session the simulator's keychain holds.
-    @StateObject private var account = AccountStore(auth: LaunchOptions.isUITesting ? nil : SupabaseAuthService.configured())
+    @StateObject private var account = AppModels.account
+    @StateObject private var noteSync = AppModels.noteSync
     @Environment(\.scenePhase) private var scenePhase
     /// Measured tab bar height, passed to screens so lists scroll clear of it.
     @State private var tabBarHeight: CGFloat = 0
@@ -71,23 +72,30 @@ struct ContentView: View {
         .task(id: linkedTeam.linked?.id) { await linkedTeam.checkForTransfers() }
         .onChange(of: scenePhase) { _, phase in
             if phase == .active {
+                Task { await noteSync.sync() }
                 Task { await linkedTeam.checkForTransfers() }
                 // Points and rank move during a gameweek; Notes' headers show them.
                 Task { await linkedTeam.refresh() }
             }
         }
+        .onChange(of: account.state) { old, new in
+            noteSync.accountChanged(from: old, to: new)
+        }
         .sheet(isPresented: Binding(
             get: { !linkedTeam.pendingTransfers.isEmpty },
             set: { _ in }
         )) {
-            TransferPromptView(transfers: linkedTeam.pendingTransfers) {
+            TransferPromptView(transfers: linkedTeam.pendingTransfers, managerID: linkedTeam.linked?.id) {
                 linkedTeam.finishPrompt()
             }
         }
         .task { await gameweeks.loadIfNeeded() }
         .task { await account.observeSession() }
-        // Notes live on the device.
-        .modelContainer(for: Note.self, inMemory: LaunchOptions.isUITesting)
+        .task { await noteSync.sync() }
+        .task { await noteSync.syncWhenOnline() }
+        // Outermost, so sheets presented from here get them too.
+        .environmentObject(noteSync)
+        .modelContainer(AppModels.notes)
     }
 
     @ViewBuilder
@@ -99,6 +107,33 @@ struct ContentView: View {
         case .profile: ProfileView()
         }
     }
+}
+
+/// Made once per launch, since SwiftUI can create `ContentView` more than once
+/// and `NoteSync` needs the same account and container the views use.
+@MainActor
+private enum AppModels {
+    // UI tests run signed out, whatever session the simulator's keychain holds.
+    static let account = AccountStore(auth: LaunchOptions.isUITesting ? nil : SupabaseAuthService.configured())
+
+    /// Notes live on the device; UI tests keep nothing.
+    static let notes: ModelContainer = {
+        let schema = Schema([Note.self, PendingNoteWrite.self])
+        do {
+            return try ModelContainer(for: schema,
+                                      configurations: ModelConfiguration(isStoredInMemoryOnly: LaunchOptions.isUITesting))
+        } catch {
+            // Better an empty Notes tab for this launch than a crash on every one.
+            Logger.notes.fault("Couldn't open the notes store: \(error.logSummary, privacy: .public) \(error)")
+            do {
+                return try ModelContainer(for: schema, configurations: ModelConfiguration(isStoredInMemoryOnly: true))
+            } catch {
+                fatalError("Couldn't create an in-memory notes store: \(error)")
+            }
+        }
+    }()
+
+    static let noteSync = NoteSync(container: notes, account: account, defaults: LaunchOptions.userDefaults())
 }
 
 /// Tab bar: a rounded card with a solid green pill behind the selected tab.

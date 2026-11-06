@@ -11,10 +11,13 @@ import SwiftUI
 /// they can be written from the Notes tab.
 struct TransferPromptView: View {
     let transfers: [NamedTransfer]
+    /// The linked FPL team, which made them.
+    let managerID: Int?
     /// Called after the notes are saved, either way.
     let onFinish: () -> Void
 
     @Environment(\.modelContext) private var context
+    @EnvironmentObject private var noteSync: NoteSync
     /// Note text per transfer id.
     @State private var texts: [String: String] = [:]
 
@@ -61,11 +64,14 @@ struct TransferPromptView: View {
     private func save() {
         for pending in transfers {
             let text = texts[pending.id, default: ""].trimmingCharacters(in: .whitespacesAndNewlines)
-            context.insert(Note(text: text,
-                                gameweek: pending.transfer.event,
-                                players: [pending.noteTransfer.playerIn],
-                                transfer: pending.noteTransfer,
-                                createdAt: pending.transfer.time))
+            let note = Note(text: text,
+                            gameweek: pending.transfer.event,
+                            players: [pending.noteTransfer.playerIn],
+                            transfer: pending.noteTransfer,
+                            managerID: managerID,
+                            createdAt: pending.transfer.time)
+            context.insert(note)
+            noteSync.added(note)
         }
         context.saveNotes("Saved \(transfers.count) transfer note(s)")
         onFinish()
@@ -89,6 +95,9 @@ private struct TransferCard: View {
 
             TextField("Why did you bring in \(transfer.playerIn.webName)?", text: $text, axis: .vertical)
                 .lineLimit(3...8)
+                .onChange(of: text) {
+                    if text.count > Note.maxTextLength { text = String(text.prefix(Note.maxTextLength)) }
+                }
                 .padding(10)
                 .background(Theme.background, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
         }
