@@ -1131,6 +1131,8 @@ struct LoggingTests {
         #expect(FPLAPIClient.route("managers/3039435/transfers") == "managers/{id}/transfers")
         #expect(FPLAPIClient.route("managers/1") == "managers/{id}")
         #expect(FPLAPIClient.route("events/9/live") == "events/9/live")
+        #expect(FPLAPIClient.route("me/notes/6f9619ff-8b86-d011-b42d-00c04fc964ff") == "me/notes/{id}")
+        #expect(FPLAPIClient.route("me/notes") == "me/notes")
     }
 
     @Test func decodingSummaryNamesTheKeyAndPath() throws {

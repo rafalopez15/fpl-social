@@ -90,6 +90,16 @@ struct AccountRequestTests {
         #expect(request.url?.absoluteString == "https://stub.test/api/fixtures?started=false")
     }
 
+    @Test func putsANoteAsJSON() throws {
+        let id = try #require(UUID(uuidString: "6F9619FF-8B86-D011-B42D-00C04FC964FF"))
+        let request = client.request("me/notes/\(id.uuidString.lowercased())", method: "PUT",
+                                     body: Data("{}".utf8), accessToken: "abc")
+        #expect(request.httpMethod == "PUT")
+        #expect(request.url?.absoluteString == "https://stub.test/api/me/notes/6f9619ff-8b86-d011-b42d-00c04fc964ff")
+        #expect(request.value(forHTTPHeaderField: "Content-Type") == "application/json")
+        #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer abc")
+    }
+
     @Test func decodesTheAccount() throws {
         let data = Data(#"{"id": "0b6c2a4e-6f1d-4a43-9d1b-3c9f0f6e2a10", "created_at": "2026-11-06T02:13:32.123456Z"}"#.utf8)
         let account = try JSONDecoder.fplAPI.decode(Account.self, from: data)
@@ -110,6 +120,29 @@ extension StubbedNetworkTests {
                 guard case FPLAPIClient.APIError.unauthorized("Not signed in") = error else { return false }
                 return true
             }
+        }
+
+        @Test func anInvalidCursorIsA422() async {
+            StubURLProtocol.responses = ["/api/me/notes": (422, #"{"detail": "Invalid cursor"}"#)]
+            await #expect {
+                try await client.notes(since: "bad", accessToken: "abc")
+            } throws: { error in
+                guard case FPLAPIClient.APIError.http(status: 422, detail: "Invalid cursor") = error else { return false }
+                return true
+            }
+        }
+
+        @Test func decodesTheStoredNote() async throws {
+            let id = try #require(UUID(uuidString: "6F9619FF-8B86-D011-B42D-00C04FC964FF"))
+            StubURLProtocol.responses = ["/api/me/notes/6f9619ff-8b86-d011-b42d-00c04fc964ff": (200, """
+                {"id": "6f9619ff-8b86-d011-b42d-00c04fc964ff", "text": "Hold", "gameweek": 10, "players": [],
+                 "transfer": null, "manager_id": null, "created_at": "2026-10-26T07:33:20Z",
+                 "updated_at": "2026-10-26T07:35:00.5Z", "deleted_at": null}
+                """)]
+            let body = NoteBody(text: "Hold", gameweek: 10, players: [], createdAt: .now, updatedAt: .now)
+            let stored = try await client.putNote(body, id: id, accessToken: "abc")
+            #expect(stored.id == id)
+            #expect(stored.text == "Hold")
         }
 
         @Test func mapsA503ToUnavailable() async {
