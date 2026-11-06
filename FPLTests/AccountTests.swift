@@ -19,10 +19,22 @@ final class FakeAuth: AuthService, @unchecked Sendable {
         var signOuts = 0
         var verifyError: SignInError?
         var refreshError: SignInError?
+        /// Runs inside `signOut()`, before the SDK's event, to look at the store at that moment.
+        var onSignOut: (@Sendable () async -> Void)?
     }
 
+    let sessionEnded: AsyncStream<Void>
+    private let ended: AsyncStream<Void>.Continuation
+
     init(email: String? = nil) {
+        (sessionEnded, ended) = AsyncStream.makeStream()
         lock.withLock { $0.email = email }
+    }
+
+    /// What the SDK does when it drops the session on its own.
+    func dropSession() {
+        update { $0.email = nil }
+        ended.yield()
     }
 
     var state: State { lock.withLock { $0 } }
@@ -50,7 +62,9 @@ final class FakeAuth: AuthService, @unchecked Sendable {
     }
 
     func signOut() async {
+        await state.onSignOut?()
         update { $0.email = nil; $0.signOuts += 1 }
+        ended.yield()
     }
 }
 
@@ -157,7 +171,9 @@ struct AccountStoreTests {
         let auth = FakeAuth(email: "a@b.co")
         let me = FakeMe(accepting: nil)
         let store = AccountStore(auth: auth) { try await me($0) }
+        let recorded = stateAtSignOut(of: auth, store)
         await #expect(throws: SignInError.signedOut) { try await store.withAccessToken { try await me($0) } }
+        #expect(recorded.withLock { $0 } == .signedOut)
         #expect(store.state == .signedOut)
         #expect(store.signedOutReason == .signedOut)
         #expect(auth.state.refreshes == 1)
@@ -205,6 +221,59 @@ struct AccountStoreTests {
         #expect(store.signedOutReason == nil)
         #expect(auth.state.signOuts == 0)
         #expect(me.count == 0)
+    }
+
+    /// Waits for the store's session observer to catch up.
+    func waitUntil(_ condition: () -> Bool) async throws {
+        for _ in 0..<100 where !condition() {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+    }
+
+    @Test func aSessionTheSDKDropsSignsOut() async throws {
+        let auth = FakeAuth(email: "a@b.co")
+        let store = AccountStore(auth: auth)
+        let observing = Task { await store.observeSession() }
+        defer { observing.cancel() }
+
+        auth.dropSession()
+        try await waitUntil { store.state == .signedOut }
+        #expect(store.state == .signedOut)
+        #expect(store.signedOutReason == .signedOut)
+    }
+
+    /// The store's state when it called `auth.signOut()`.
+    func stateAtSignOut(of auth: FakeAuth, _ store: AccountStore) -> OSAllocatedUnfairLock<AccountStore.State?> {
+        let recorded = OSAllocatedUnfairLock<AccountStore.State?>(initialState: nil)
+        auth.update { $0.onSignOut = { let state = await store.state; recorded.withLock { $0 = state } } }
+        return recorded
+    }
+
+    @Test func signingOutYourselfDoesntSayYouWereSignedOut() async throws {
+        let auth = FakeAuth(email: "a@b.co")
+        let store = AccountStore(auth: auth)
+        let recorded = stateAtSignOut(of: auth, store)
+        let observing = Task { await store.observeSession() }
+        defer { observing.cancel() }
+
+        await store.signOut()
+        // Already signed out when the SDK hears about it, so its event changes nothing.
+        #expect(recorded.withLock { $0 } == .signedOut)
+        #expect(store.state == .signedOut)
+        #expect(store.signedOutReason == nil)
+    }
+
+    @Test func aDroppedSessionAfterSigningInAgainSignsOutAgain() async throws {
+        let auth = FakeAuth()
+        let store = AccountStore(auth: auth) { _ in AccountStoreTests.account }
+        let observing = Task { await store.observeSession() }
+        defer { observing.cancel() }
+
+        try await store.verify(email: "a@b.co", code: "123456")
+        #expect(store.state == .signedIn(email: "a@b.co"))
+        auth.dropSession()
+        try await waitUntil { store.state == .signedOut }
+        #expect(store.signedOutReason == .signedOut)
     }
 
     @Test func signingOut() async throws {

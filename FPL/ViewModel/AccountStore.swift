@@ -65,10 +65,24 @@ final class AccountStore: ObservableObject {
     }
 
     func signOut() async {
-        await auth?.signOut()
+        // State first, so the SDK's own signed-out event finds you already signed out.
         signedOutReason = nil
         state = auth == nil ? .unavailable : .signedOut
+        await auth?.signOut()
         Logger.account.notice("Signed out")
+    }
+
+    /// Follows the SDK's session for as long as the caller's task runs, so a
+    /// session it drops (say, after a refresh token was revoked) shows as signed
+    /// out without waiting for an account request.
+    func observeSession() async {
+        guard let auth else { return }
+        for await _ in auth.sessionEnded {
+            guard case .signedIn = state else { continue }
+            signedOutReason = .signedOut
+            state = .signedOut
+            Logger.account.notice("Signed out: the saved session went away")
+        }
     }
 
     /// Runs an account request with an access token. A 401 refreshes the session
@@ -80,9 +94,9 @@ final class AccountStore: ObservableObject {
         do {
             return try await authorized(call)
         } catch SignInError.signedOut {
-            await auth?.signOut()
             signedOutReason = .signedOut
             state = .signedOut
+            await auth?.signOut()
             Logger.account.notice("Signed out: the session couldn't be refreshed or was rejected")
             throw SignInError.signedOut
         }

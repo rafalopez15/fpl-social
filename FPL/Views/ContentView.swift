@@ -85,6 +85,7 @@ struct ContentView: View {
             }
         }
         .task { await gameweeks.loadIfNeeded() }
+        .task { await account.observeSession() }
         // Notes live on the device.
         .modelContainer(for: Note.self, inMemory: LaunchOptions.isUITesting)
     }
