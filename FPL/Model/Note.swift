@@ -22,9 +22,21 @@ final class Note {
     var players: [NotePlayer]
     /// Set for a transfer note (FPL-12): the transfer it explains. Nil for a free note.
     var transfer: NoteTransfer?
+    /// The note's id on every device and the server. Nil only for notes saved before
+    /// syncing, until `NoteSync` fills it in at launch.
+    var syncID: UUID?
+    /// The account the note syncs to. Nil for a note kept on this device only.
+    var accountID: UUID?
+    /// For a transfer note, the FPL team the transfer was made in.
+    var managerID: Int?
+
+    /// The longest text the server takes.
+    static let maxTextLength = 5000
 
     init(text: String, gameweek: Int?, players: [NotePlayer] = [], transfer: NoteTransfer? = nil,
-         createdAt: Date = .now) {
+         managerID: Int? = nil, createdAt: Date = .now) {
+        self.syncID = UUID()
+        self.managerID = managerID
         self.text = text
         self.gameweek = gameweek
         self.players = players
@@ -108,7 +120,9 @@ struct DeletedNote: Identifiable {
     let players: [NotePlayer]
     let transfer: NoteTransfer?
     let createdAt: Date
-    let updatedAt: Date
+    let syncID: UUID?
+    let accountID: UUID?
+    let managerID: Int?
 
     init(_ note: Note) {
         text = note.text
@@ -116,13 +130,19 @@ struct DeletedNote: Identifiable {
         players = note.players
         transfer = note.transfer
         createdAt = note.createdAt
-        updatedAt = note.updatedAt
+        syncID = note.syncID
+        accountID = note.accountID
+        managerID = note.managerID
     }
 
-    /// A new note identical to the deleted one, so it returns to the same place.
-    func restored() -> Note {
-        let note = Note(text: text, gameweek: gameweek, players: players, transfer: transfer, createdAt: createdAt)
-        note.updatedAt = updatedAt
+    /// A new note identical to the deleted one, so it returns to the same place,
+    /// with the same sync id. Updated now, so the undo is newer than the delete.
+    func restored(at date: Date = .now) -> Note {
+        let note = Note(text: text, gameweek: gameweek, players: players, transfer: transfer,
+                        managerID: managerID, createdAt: createdAt)
+        note.syncID = syncID ?? note.syncID
+        note.accountID = accountID
+        note.updatedAt = date
         return note
     }
 }
