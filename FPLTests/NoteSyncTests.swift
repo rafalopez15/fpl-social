@@ -349,7 +349,6 @@ struct NoteSyncTests {
         _ = addNote("Two", at: 2, to: sync)
 
         try await account.verify(email: "a@b.co", code: "123456")
-        sync.accountChanged(from: .signedOut, to: account.state)
         #expect(sync.uploadOffer == 2)
         sync.keepDeviceNotesOnDevice()
         #expect(sync.uploadOffer == nil)
@@ -364,7 +363,6 @@ struct NoteSyncTests {
         let sync = makeSync()
         _ = addNote("One", at: 1, to: sync)
         try await account.verify(email: "a@b.co", code: "123456")
-        sync.accountChanged(from: .signedOut, to: account.state)
 
         sync.keepDeviceNotesInAccount()
         await sync.flush()
@@ -376,7 +374,6 @@ struct NoteSyncTests {
         await account.signOut()
         let sync = makeSync()
         try await account.verify(email: "a@b.co", code: "123456")
-        sync.accountChanged(from: .signedOut, to: account.state)
         #expect(sync.uploadOffer == nil)
     }
 
@@ -389,14 +386,29 @@ struct NoteSyncTests {
         api.update { $0.putError = nil; $0.pages = [NotesPage(notes: [], cursor: "c1", more: false)] }
         await sync.pull()
 
-        let signedIn = account.state
         await account.signOut()
-        sync.accountChanged(from: signedIn, to: account.state)
 
         #expect(try notes().map(\.text) == ["Device only"])
         #expect(sync.pendingCount == 0)
         #expect(try context.fetch(FetchDescriptor<PendingNoteWrite>()).isEmpty)
         #expect(defaults.string(forKey: "notesSyncCursor") == nil)
+    }
+
+    @Test func aSessionThatEndsOnItsOwnAlsoRemovesThem() async throws {
+        let sync = makeSync()
+        _ = addNote("Synced", at: 1, to: sync)
+        let observing = Task { await account.observeSession() }
+        defer { observing.cancel() }
+        auth.dropSession()
+        for _ in 0..<1000 where account.state != .signedOut { await Task.yield() }
+        #expect(account.state == .signedOut)
+        #expect(try notes().isEmpty)
+    }
+
+    @Test func signingOutWarnsAboutUnsyncedChanges() {
+        #expect(!AccountCard.signOutMessage(email: "a@b.co", unsynced: 0).contains("lost"))
+        #expect(AccountCard.signOutMessage(email: "a@b.co", unsynced: 1).hasSuffix("1 change hasn't synced yet and will be lost."))
+        #expect(AccountCard.signOutMessage(email: "a@b.co", unsynced: 3).contains("3 changes haven't"))
     }
 
     @Test func notesSavedBeforeSyncingGetASyncID() throws {

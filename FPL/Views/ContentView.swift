@@ -78,9 +78,6 @@ struct ContentView: View {
                 Task { await linkedTeam.refresh() }
             }
         }
-        .onChange(of: account.state) { old, new in
-            noteSync.accountChanged(from: old, to: new)
-        }
         .sheet(isPresented: Binding(
             get: { !linkedTeam.pendingTransfers.isEmpty },
             set: { _ in }

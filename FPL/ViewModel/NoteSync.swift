@@ -43,6 +43,7 @@ final class NoteSync: ObservableObject {
         self.account = account
         self.api = api
         self.defaults = defaults
+        account.onStateChange = { [weak self] old, new in self?.accountChanged(from: old, to: new) }
         fillInSyncIDs()
         removeOtherAccountsNotes()
         refreshPendingCount()
@@ -76,7 +77,7 @@ final class NoteSync: ObservableObject {
 
     // MARK: - Account changes
 
-    /// Called when the account's state changes. Signing out removes the account's
+    /// Runs when the account's state changes. Signing out removes the account's
     /// notes; signing in offers to keep this device's notes in the account, then syncs.
     func accountChanged(from old: AccountStore.State, to new: AccountStore.State) {
         removeOtherAccountsNotes()

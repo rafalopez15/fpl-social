@@ -18,7 +18,12 @@ final class AccountStore: ObservableObject {
         case signedIn(email: String, userID: UUID)
     }
 
-    @Published private(set) var state: State
+    @Published private(set) var state: State {
+        didSet { if state != oldValue { onStateChange?(oldValue, state) } }
+    }
+    /// Runs as the state changes, before views update, so `NoteSync` has the
+    /// account's notes ready by the time a screen shows the new state.
+    var onStateChange: ((_ old: State, _ new: State) -> Void)?
     /// Set when a session ended on its own (not from Sign out), shown until the next sign-in.
     @Published private(set) var signedOutReason: SignInError?
 

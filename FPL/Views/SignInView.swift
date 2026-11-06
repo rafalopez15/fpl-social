@@ -11,21 +11,84 @@ struct SignInView: View {
     let reason: String
 
     @EnvironmentObject private var account: AccountStore
+    @EnvironmentObject private var noteSync: NoteSync
     @Environment(\.dismiss) private var dismiss
+    /// Signed in, and asking about this iPhone's notes before closing.
+    @State private var isOffering = false
 
     var body: some View {
         NavigationStack {
-            SignInForm(account: account, reason: reason) { dismiss() }
-                .themedScreen()
-                .navigationTitle("Sign in")
-                .navigationBarTitleDisplayMode(.inline)
-                .toolbar {
+            Group {
+                if isOffering, let count = noteSync.uploadOffer {
+                    UploadOffer(count: count) { keep in
+                        if keep {
+                            noteSync.keepDeviceNotesInAccount()
+                        } else {
+                            noteSync.keepDeviceNotesOnDevice()
+                        }
+                        dismiss()
+                    }
+                } else {
+                    SignInForm(account: account, reason: reason) {
+                        if noteSync.uploadOffer != nil { isOffering = true } else { dismiss() }
+                    }
+                }
+            }
+            .themedScreen()
+            .navigationTitle(isOffering ? "Your notes" : "Sign in")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                if !isOffering {
                     ToolbarItem(placement: .cancellationAction) {
                         Button("Cancel") { dismiss() }
                     }
                 }
+            }
         }
         .presentationBackground(Theme.background)
+        // Both answers are buttons, so swiping away can't leave it unanswered.
+        .interactiveDismissDisabled(isOffering)
+    }
+}
+
+/// After signing in on an iPhone that has notes: keep them in the account, so
+/// they sync, or only on this iPhone. Asked once per sign-in.
+private struct UploadOffer: View {
+    let count: Int
+    let onAnswer: (_ keepInAccount: Bool) -> Void
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 20) {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(count == 1 ? "Keep this note in your account?" : "Keep these \(count) notes in your account?")
+                        .font(.title3.weight(.semibold))
+                        .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityAddTraits(.isHeader)
+                    Text(count == 1
+                         ? "You're signed in. Your note is only on this iPhone. In your account, it syncs to your other devices."
+                         : "You're signed in. Your notes are only on this iPhone. In your account, they sync to your other devices.")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                VStack(spacing: 12) {
+                    Button {
+                        onAnswer(true)
+                    } label: {
+                        Text("Keep in account").frame(maxWidth: .infinity, minHeight: 32)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    Button {
+                        onAnswer(false)
+                    } label: {
+                        Text("Only on this iPhone").frame(maxWidth: .infinity, minHeight: 32)
+                    }
+                    .buttonStyle(.bordered)
+                }
+            }
+            .padding(16)
+        }
     }
 }
 
@@ -203,6 +266,7 @@ private struct ButtonLabel: View {
 /// as and Sign out. Hidden when the build has no sign-in.
 struct AccountCard: View {
     @EnvironmentObject private var account: AccountStore
+    @EnvironmentObject private var noteSync: NoteSync
     @State private var isSigningIn = false
     @State private var confirmingSignOut = false
 
@@ -255,12 +319,27 @@ struct AccountCard: View {
             }
         } message: {
             if case .signedIn(let email, _) = account.state {
-                Text("To sign in again, you'll need a new code sent to \(email).")
+                Text(Self.signOutMessage(email: email, unsynced: noteSync.pendingCount))
             }
+        }
+        .onChange(of: confirmingSignOut) { _, isShowing in
+            // One last try, so the warning about unsynced changes is only shown when it's real.
+            if isShowing { Task { await noteSync.flush() } }
         }
         .onChange(of: account.state) {
             confirmingSignOut = false
         }
+    }
+
+    nonisolated static func signOutMessage(email: String, unsynced: Int) -> String {
+        var message = "Your synced notes leave this iPhone until you sign in again, "
+            + "which needs a new code sent to \(email)."
+        switch unsynced {
+        case 0: break
+        case 1: message += " 1 change hasn't synced yet and will be lost."
+        default: message += " \(unsynced) changes haven't synced yet and will be lost."
+        }
+        return message
     }
 
     private func card(@ViewBuilder content: () -> some View) -> some View {
