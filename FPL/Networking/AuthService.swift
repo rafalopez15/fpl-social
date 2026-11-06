@@ -13,6 +13,8 @@ protocol AuthService: Sendable {
     /// The email of the saved session, or nil when signed out. No network call,
     /// so it's safe at launch.
     var storedEmail: String? { get }
+    /// The user id of the saved session, the same as `Account.id`. No network call.
+    var storedUserID: UUID? { get }
     func sendCode(to email: String) async throws
     /// Returns the signed-in email.
     func verify(email: String, code: String) async throws -> String
@@ -51,6 +53,10 @@ struct SupabaseAuthService: AuthService {
 
     var storedEmail: String? {
         client.currentSession.map { $0.user.email ?? "" }
+    }
+
+    var storedUserID: UUID? {
+        client.currentSession?.user.id
     }
 
     func sendCode(to email: String) async throws {

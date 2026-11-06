@@ -10,6 +10,9 @@ import Testing
 
 /// Stands in for Supabase: hands out tokens and records what was called.
 final class FakeAuth: AuthService, @unchecked Sendable {
+    /// Every fake session's user, and `AccountStoreTests.account`'s id.
+    static let userID = UUID(uuidString: "0B6C2A4E-6F1D-4A43-9D1B-3C9F0F6E2A10")!
+
     private let lock = OSAllocatedUnfairLock(initialState: State())
 
     struct State {
@@ -41,6 +44,7 @@ final class FakeAuth: AuthService, @unchecked Sendable {
     func update(_ change: @Sendable (inout State) -> Void) { lock.withLock { change(&$0) } }
 
     var storedEmail: String? { state.email }
+    var storedUserID: UUID? { state.email == nil ? nil : Self.userID }
 
     func sendCode(to email: String) async throws {}
 
@@ -121,7 +125,7 @@ extension StubbedNetworkTests {
 
 @MainActor
 struct AccountStoreTests {
-    nonisolated static let account = Account(id: UUID(), createdAt: .now)
+    nonisolated static let account = Account(id: FakeAuth.userID, createdAt: .now)
 
     /// `GET /me` that only accepts `token`, counting calls.
     final class FakeMe: @unchecked Sendable {
@@ -144,7 +148,7 @@ struct AccountStoreTests {
     }
 
     @Test func startsFromTheSavedSession() {
-        #expect(AccountStore(auth: FakeAuth(email: "a@b.co")).state == .signedIn(email: "a@b.co"))
+        #expect(AccountStore(auth: FakeAuth(email: "a@b.co")).state == .signedIn(email: "a@b.co", userID: FakeAuth.userID))
         #expect(AccountStore(auth: FakeAuth()).state == .signedOut)
     }
 
@@ -152,7 +156,7 @@ struct AccountStoreTests {
         let me = FakeMe(accepting: "first")
         let store = AccountStore(auth: FakeAuth()) { try await me($0) }
         try await store.verify(email: "a@b.co", code: "123456")
-        #expect(store.state == .signedIn(email: "a@b.co"))
+        #expect(store.state == .signedIn(email: "a@b.co", userID: FakeAuth.userID))
         #expect(me.count == 1)
     }
 
@@ -164,7 +168,7 @@ struct AccountStoreTests {
         #expect(account == Self.account)
         #expect(auth.state.refreshes == 1)
         #expect(me.count == 2)
-        #expect(store.state == .signedIn(email: "a@b.co"))
+        #expect(store.state == .signedIn(email: "a@b.co", userID: FakeAuth.userID))
     }
 
     @Test func aSecond401SignsOut() async {
@@ -196,7 +200,7 @@ struct AccountStoreTests {
         let me = FakeMe(accepting: nil)
         let store = AccountStore(auth: auth) { try await me($0) }
         await #expect(throws: SignInError.connection) { try await store.withAccessToken { try await me($0) } }
-        #expect(store.state == .signedIn(email: "a@b.co"))
+        #expect(store.state == .signedIn(email: "a@b.co", userID: FakeAuth.userID))
         #expect(auth.state.signOuts == 0)
     }
 
@@ -270,7 +274,7 @@ struct AccountStoreTests {
         defer { observing.cancel() }
 
         try await store.verify(email: "a@b.co", code: "123456")
-        #expect(store.state == .signedIn(email: "a@b.co"))
+        #expect(store.state == .signedIn(email: "a@b.co", userID: FakeAuth.userID))
         auth.dropSession()
         try await waitUntil { store.state == .signedOut }
         #expect(store.signedOutReason == .signedOut)
@@ -349,6 +353,6 @@ struct SignInModelTests {
         await model.sendCode()
         model.codeText = "123456"
         #expect(await model.verify())
-        #expect(account.state == .signedIn(email: "a@b.co"))
+        #expect(account.state == .signedIn(email: "a@b.co", userID: FakeAuth.userID))
     }
 }

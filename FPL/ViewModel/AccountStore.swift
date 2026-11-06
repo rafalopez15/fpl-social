@@ -14,7 +14,8 @@ final class AccountStore: ObservableObject {
         /// No sign-in configured for this build (Release until production has accounts).
         case unavailable
         case signedOut
-        case signedIn(email: String)
+        /// `userID` is `Account.id`, which owns synced notes.
+        case signedIn(email: String, userID: UUID)
     }
 
     @Published private(set) var state: State
@@ -29,10 +30,20 @@ final class AccountStore: ObservableObject {
         self.auth = auth
         self.fetchAccount = fetchAccount
         if let auth {
-            state = auth.storedEmail.map { .signedIn(email: $0) } ?? .signedOut
+            if let email = auth.storedEmail, let userID = auth.storedUserID {
+                state = .signedIn(email: email, userID: userID)
+            } else {
+                state = .signedOut
+            }
         } else {
             state = .unavailable
         }
+    }
+
+    /// The signed-in user's id, nil when signed out.
+    var userID: UUID? {
+        guard case .signedIn(_, let userID) = state else { return nil }
+        return userID
     }
 
     func sendCode(to email: String) async throws {
@@ -46,8 +57,9 @@ final class AccountStore: ObservableObject {
     func verify(email: String, code: String) async throws {
         guard let auth else { throw SignInError.unavailable }
         let signedInEmail = try await auth.verify(email: email, code: code)
+        let account: Account
         do {
-            _ = try await authorized(fetchAccount)
+            account = try await authorized(fetchAccount)
         } catch {
             await auth.signOut()
             state = .signedOut
@@ -60,7 +72,7 @@ final class AccountStore: ObservableObject {
             throw reason == .signedOut ? SignInError.unavailable : reason
         }
         signedOutReason = nil
-        state = .signedIn(email: signedInEmail)
+        state = .signedIn(email: signedInEmail, userID: account.id)
         Logger.account.notice("Signed in")
     }
 

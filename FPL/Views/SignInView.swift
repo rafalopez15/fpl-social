@@ -231,7 +231,7 @@ struct AccountCard: View {
                     }
                     .buttonStyle(.borderedProminent)
                 }
-            case .signedIn(let email):
+            case .signedIn(let email, _):
                 card {
                     Text("Signed in as \(email)")
                         .font(.subheadline)
@@ -254,7 +254,7 @@ struct AccountCard: View {
                 Task { await account.signOut() }
             }
         } message: {
-            if case .signedIn(let email) = account.state {
+            if case .signedIn(let email, _) = account.state {
                 Text("To sign in again, you'll need a new code sent to \(email).")
             }
         }
