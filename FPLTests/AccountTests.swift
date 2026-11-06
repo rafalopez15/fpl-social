@@ -250,6 +250,19 @@ struct SignInModelTests {
         #expect(model.codeText.isEmpty)
     }
 
+    @Test func aSpentCodeIsClearedWhenTheAPIFails() async {
+        let account = AccountStore(auth: FakeAuth()) { _ in
+            throw FPLAPIClient.APIError.dataUnavailable("Sign-in is unavailable right now")
+        }
+        let model = SignInModel(account: account)
+        model.emailText = "a@b.co"
+        await model.sendCode()
+        model.codeText = "123456"
+        #expect(await model.verify() == false)
+        #expect(model.error == .unavailable)
+        #expect(model.codeText.isEmpty)
+    }
+
     @Test func aRightCodeSignsIn() async {
         let account = AccountStore(auth: FakeAuth()) { _ in AccountStoreTests.account }
         let model = SignInModel(account: account)

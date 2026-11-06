@@ -183,7 +183,9 @@ final class SignInModel: ObservableObject {
             return true
         } catch {
             self.error = AccountStore.signInError(error)
-            if self.error == .wrongCode { codeText = "" }
+            // Codes work once, and one Supabase accepted is spent even if the API then
+            // failed, so resubmitting it would only say "wrong or expired".
+            codeText = ""
             return false
         }
     }
