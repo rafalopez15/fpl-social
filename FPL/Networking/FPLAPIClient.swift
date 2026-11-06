@@ -23,6 +23,8 @@ struct FPLAPIClient {
 
     enum APIError: LocalizedError {
         case notFound(String)
+        /// 401 from an account route: no token, or an invalid or expired one.
+        case unauthorized(String)
         case dataUnavailable(String)
         case http(status: Int, detail: String?)
         case invalidResponse
@@ -30,7 +32,7 @@ struct FPLAPIClient {
 
         var errorDescription: String? {
             switch self {
-            case .notFound(let detail):
+            case .notFound(let detail), .unauthorized(let detail):
                 return detail
             case .dataUnavailable(let detail):
                 return detail
@@ -110,21 +112,42 @@ struct FPLAPIClient {
         try await get("events")
     }
 
+    /// `GET /api/me`: the signed-in user's account, created on the first call.
+    /// 401 when the token is rejected, 503 when sign-in is unavailable.
+    func me(accessToken: String) async throws -> Account {
+        try await get("me", accessToken: accessToken)
+    }
+
+    /// Account routes are `me` and everything under it. Only they get the token:
+    /// FPL routes ignore it, and it shouldn't travel where it isn't needed.
+    static func isAccountRoute(_ path: String) -> Bool {
+        path == "me" || path.hasPrefix("me/")
+    }
+
+    func request(_ path: String, query: [URLQueryItem] = [], accessToken: String? = nil) -> URLRequest {
+        var url = baseURL.appendingPathComponent(path)
+        if !query.isEmpty { url.append(queryItems: query) }
+        var request = URLRequest(url: url)
+        if let accessToken, Self.isAccountRoute(path) {
+            request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        }
+        return request
+    }
+
     // MARK: - Private
 
     private struct ErrorBody: Decodable {
         let detail: String
     }
 
-    private func get<T: Decodable>(_ path: String, query: [URLQueryItem] = []) async throws -> T {
-        var url = baseURL.appendingPathComponent(path)
-        if !query.isEmpty { url.append(queryItems: query) }
+    private func get<T: Decodable>(_ path: String, query: [URLQueryItem] = [],
+                                   accessToken: String? = nil) async throws -> T {
         let route = Self.route(path)
 
         let data: Data
         let response: URLResponse
         do {
-            (data, response) = try await session.data(from: url)
+            (data, response) = try await session.data(for: request(path, query: query, accessToken: accessToken))
         } catch {
             if (error as? URLError)?.code == .cancelled || error is CancellationError {
                 Logger.network.debug("GET \(route, privacy: .public) cancelled")
@@ -141,10 +164,17 @@ struct FPLAPIClient {
 
         guard (200..<300).contains(http.statusCode) else {
             let detail = try? JSONDecoder().decode(ErrorBody.self, from: data).detail
-            // A 404 is an expected answer here (no team with that ID, no squad yet).
-            Logger.network.log(level: http.statusCode == 404 ? .info : .error,
+            // A 404 is an expected answer here (no team with that ID, no squad yet), and
+            // a 401 is handled by refreshing the session.
+            let level: OSLogType = switch http.statusCode {
+            case 404: .info
+            case 401: .default
+            default: .error
+            }
+            Logger.network.log(level: level,
                                "GET \(route, privacy: .public) returned \(http.statusCode): \(detail ?? "no detail", privacy: .public)")
             switch http.statusCode {
+            case 401: throw APIError.unauthorized(detail ?? "Not signed in")
             case 404: throw APIError.notFound(detail ?? "Not found")
             case 503: throw APIError.dataUnavailable(detail ?? "FPL data is currently unavailable")
             default: throw APIError.http(status: http.statusCode, detail: detail)
