@@ -50,3 +50,28 @@ enum SignInError: Error, Equatable {
         }
     }
 }
+
+/// Why deleting the account failed. In every case nothing was deleted and
+/// you're still signed in.
+enum DeleteAccountError: Error, Equatable {
+    /// 503: the API couldn't delete it right now.
+    case unavailable
+    case connection
+    case unknown
+
+    init(_ error: Error) {
+        switch AccountStore.signInError(error) {
+        case .unavailable: self = .unavailable
+        case .connection: self = .connection
+        default: self = .unknown
+        }
+    }
+
+    var message: String {
+        switch self {
+        case .unavailable: "Couldn't delete your account right now. Nothing was deleted; try again later."
+        case .connection: "Couldn't connect, so nothing was deleted. Check your connection and try again."
+        case .unknown: "Something went wrong, so nothing was deleted. Try again."
+        }
+    }
+}

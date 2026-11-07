@@ -509,3 +509,39 @@ struct NoteTextLimitTests {
         #expect(Note.capped("Hold") == "Hold")
     }
 }
+
+/// Deleting the account, as it reaches the account's notes.
+extension NoteSyncTests {
+    func deletingAccount(failing failure: Error?) -> AccountStore {
+        AccountStore(auth: auth, fetchAccount: { _ in AccountStoreTests.account },
+                     deleteAccount: { _ in if let failure { throw failure } })
+    }
+
+    @Test func deletingTheAccountRemovesItsNotesOnly() async throws {
+        let account = deletingAccount(failing: nil)
+        let sync = NoteSync(container: container, account: account, api: api, defaults: defaults)
+        _ = addNote("Synced", at: 1, to: sync)
+        context.insert(Note(text: "Device only", gameweek: 10))
+        context.saveNotes("test")
+
+        await account.deleteAccount()
+
+        #expect(try notes().map(\.text) == ["Device only"])
+        #expect(try context.fetch(FetchDescriptor<PendingNoteWrite>()).isEmpty)
+    }
+
+    @Test func aFailedDeleteBringsTheNotesBack() async throws {
+        let account = deletingAccount(failing: FPLAPIClient.APIError.dataUnavailable("Couldn't delete your account right now"))
+        let sync = NoteSync(container: container, account: account, api: api, defaults: defaults)
+        _ = addNote("Synced", at: 1, to: sync)
+        await sync.flush()
+        let stored = Array(api.state.stored.values)
+        api.update { $0.pages = [NotesPage(notes: stored, cursor: "c1", more: false)] }
+
+        await account.deleteAccount()
+        // Removed while deleting, then pulled again once signed back in.
+        for _ in 0..<1000 where try notes().isEmpty { await Task.yield() }
+
+        #expect(try notes().map(\.text) == ["Synced"])
+    }
+}

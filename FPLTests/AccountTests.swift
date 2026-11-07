@@ -110,6 +110,14 @@ struct AccountRequestTests {
         #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer abc")
     }
 
+    @Test func deletesTheAccountWithTheToken() {
+        let request = client.request("me", method: "DELETE", accessToken: "abc")
+        #expect(request.httpMethod == "DELETE")
+        #expect(request.url?.absoluteString == "https://stub.test/api/me")
+        #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer abc")
+        #expect(request.httpBody == nil)
+    }
+
     @Test func decodesTheAccount() throws {
         let data = Data(#"{"id": "0b6c2a4e-6f1d-4a43-9d1b-3c9f0f6e2a10", "created_at": "2026-11-06T02:13:32.123456Z"}"#.utf8)
         let account = try JSONDecoder.fplAPI.decode(Account.self, from: data)
@@ -153,6 +161,20 @@ extension StubbedNetworkTests {
             let stored = try await client.putNote(body, id: id, accessToken: "abc")
             #expect(stored.id == id)
             #expect(stored.text == "Hold")
+        }
+
+        @Test func deletingTheAccountTakesA204WithNoBody() async throws {
+            StubURLProtocol.responses = ["/api/me": (204, "")]
+            try await client.deleteMe(accessToken: "abc")
+        }
+
+        @Test func aFailedDeleteIsUnavailable() async {
+            StubURLProtocol.responses = ["/api/me": (503, #"{"detail": "Couldn't delete your account right now"}"#)]
+            await #expect {
+                try await client.deleteMe(accessToken: "abc")
+            } throws: { error in
+                DeleteAccountError(error) == .unavailable
+            }
         }
 
         @Test func mapsA503ToUnavailable() async {
@@ -397,6 +419,107 @@ struct SignInModelTests {
         model.codeText = "123456"
         #expect(await model.verify())
         #expect(account.state == .signedIn(email: "a@b.co", userID: FakeAuth.userID))
+    }
+}
+
+@MainActor
+struct DeleteAccountTests {
+    /// `DELETE /me` that fails with `failure`, or succeeds, recording the account
+    /// state each time it's called.
+    final class FakeDelete: @unchecked Sendable {
+        private let seen = OSAllocatedUnfairLock(initialState: [AccountStore.State?]())
+        let failure: Error?
+        weak var store: AccountStore?
+        init(failing failure: Error? = nil) { self.failure = failure }
+        var statesWhenCalled: [AccountStore.State?] { seen.withLock { $0 } }
+
+        func callAsFunction(_ token: String) async throws {
+            let state = await store?.state
+            seen.withLock { $0.append(state) }
+            if let failure { throw failure }
+        }
+    }
+
+    let auth = FakeAuth(email: "a@b.co")
+
+    func store(_ delete: FakeDelete) -> AccountStore {
+        let store = AccountStore(auth: auth, fetchAccount: { _ in AccountStoreTests.account },
+                                 deleteAccount: { try await delete($0) })
+        delete.store = store
+        return store
+    }
+
+    @Test func deletingSignsOutFirstWithoutSayingYouWereSignedOut() async {
+        let delete = FakeDelete()
+        let store = store(delete)
+        let recorded = AccountStoreTests().stateAtSignOut(of: auth, store)
+        let observing = Task { await store.observeSession() }
+        defer { observing.cancel() }
+
+        await store.deleteAccount()
+
+        // Signed out before the API call, so the queue stops and the SDK's event changes nothing.
+        #expect(delete.statesWhenCalled == [.signedOut])
+        #expect(recorded.withLock { $0 } == .signedOut)
+        #expect(store.state == .signedOut)
+        #expect(store.signedOutReason == nil)
+        #expect(store.accountDeleted)
+        #expect(auth.state.signOuts == 1)
+    }
+
+    @Test func a503KeepsYouSignedIn() async {
+        let delete = FakeDelete(failing: FPLAPIClient.APIError.dataUnavailable("Couldn't delete your account right now"))
+        let store = store(delete)
+
+        await store.deleteAccount()
+
+        #expect(store.state == .signedIn(email: "a@b.co", userID: FakeAuth.userID))
+        #expect(store.deleteError == .unavailable)
+        #expect(!store.accountDeleted)
+        #expect(auth.state.signOuts == 0)
+    }
+
+    @Test func noConnectionKeepsYouSignedIn() async {
+        let store = store(FakeDelete(failing: URLError(.notConnectedToInternet)))
+        await store.deleteAccount()
+        #expect(store.state == .signedIn(email: "a@b.co", userID: FakeAuth.userID))
+        #expect(store.deleteError == .connection)
+    }
+
+    @Test func aRejectedSessionSignsOutAsUsual() async {
+        let delete = FakeDelete(failing: FPLAPIClient.APIError.unauthorized("Not signed in"))
+        let store = store(delete)
+
+        await store.deleteAccount()
+
+        #expect(delete.statesWhenCalled.count == 2)
+        #expect(auth.state.refreshes == 1)
+        #expect(store.state == .signedOut)
+        #expect(store.signedOutReason == .signedOut)
+        #expect(!store.accountDeleted)
+        #expect(auth.state.signOuts == 1)
+    }
+
+    @Test func signingInAgainClearsTheNotice() async throws {
+        let store = store(FakeDelete())
+        await store.deleteAccount()
+        #expect(store.accountDeleted)
+        try await store.verify(email: "a@b.co", code: "123456")
+        #expect(!store.accountDeleted)
+    }
+
+    @Test func aRequestRejectedAfterSigningOutDoesntSayYouWereSignedOut() async {
+        let store = store(FakeDelete())
+        let calls = OSAllocatedUnfairLock(initialState: 0)
+        // As when a sync request is still running as the account is deleted.
+        await #expect(throws: SignInError.signedOut) {
+            try await store.withAccessToken { _ in
+                if calls.withLock({ $0 += 1; return $0 }) == 1 { await store.signOut() }
+                throw FPLAPIClient.APIError.unauthorized("Not signed in")
+            }
+        }
+        #expect(store.signedOutReason == nil)
+        #expect(auth.state.signOuts == 1)
     }
 }
 
