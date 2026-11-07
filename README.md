@@ -50,6 +50,16 @@ Open `FPL.xcodeproj` in Xcode, pick an iPhone simulator and run the `FPL` scheme
 
 With a local backend, `127.0.0.1` won't reach your Mac from a physical iPhone. Start the backend with `--host 0.0.0.0` and point `baseURL` at your Mac's local IP address.
 
+### Signing in on Debug builds
+
+Debug builds sign in with staging's Supabase project. To skip the emailed code, set up the staging test user:
+
+1. In staging's Supabase project, open Authentication > Users > Add user, enter an email (for example `test@fplsocial.dev`) and a strong password, and turn on Auto Confirm User. Don't create it in production.
+2. Copy `Config/Secrets.example.xcconfig` to `Config/Secrets.xcconfig` (gitignored) and fill in `TEST_USER_EMAIL` and `TEST_USER_PASSWORD`. The password can't contain `//`, which xcconfig treats as a comment.
+3. Build and run Debug. The sign-in sheet now shows "Sign in as test user" under Send code.
+
+Staging tokens only work against a Vercel preview of the backend, not production. Release builds never include the button.
+
 ### Troubleshooting
 
 - **"Could not connect to the server"** (local backend): it isn't running, or it's on a different port. `fastapi dev main.py` uses port 8000, not 5000.

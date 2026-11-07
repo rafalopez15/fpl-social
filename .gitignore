@@ -68,3 +68,6 @@ swiftlint.json
 
 # Python bytecode from running the CI scripts
 __pycache__/
+
+# Local secrets for Debug builds (see Config/Secrets.example.xcconfig)
+Config/Secrets.xcconfig

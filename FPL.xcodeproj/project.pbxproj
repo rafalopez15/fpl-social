@@ -28,6 +28,7 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		0578FA102EF0000000000001 /* Debug.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Debug.xcconfig; sourceTree = "<group>"; };
 		05DF9A602CD9C8B900DEC1D4 /* FPL.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = FPL.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		05DF9A702CD9C8B900DEC1D4 /* FPLTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = FPLTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		05DF9A7A2CD9C8B900DEC1D4 /* FPLUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = FPLUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -90,9 +91,18 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		0578FA102EF0000000000002 /* Config */ = {
+			isa = PBXGroup;
+			children = (
+				0578FA102EF0000000000001 /* Debug.xcconfig */,
+			);
+			path = Config;
+			sourceTree = "<group>";
+		};
 		05DF9A572CD9C8B900DEC1D4 = {
 			isa = PBXGroup;
 			children = (
+				0578FA102EF0000000000002 /* Config */,
 				05DF9A622CD9C8B900DEC1D4 /* FPL */,
 				05DF9A732CD9C8B900DEC1D4 /* FPLTests */,
 				05DF9A7D2CD9C8B900DEC1D4 /* FPLUITests */,
@@ -414,6 +424,7 @@
 		};
 		05DF9A852CD9C8BA00DEC1D4 /* Debug */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = 0578FA102EF0000000000001 /* Debug.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;

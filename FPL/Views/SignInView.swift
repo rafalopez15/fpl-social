@@ -167,8 +167,38 @@ private struct SignInForm: View {
             }
             .buttonStyle(.borderedProminent)
             .disabled(model.emailText.isEmpty || model.isWorking)
+
+            #if DEBUG
+            if let testUser = TestUser.configured() {
+                testUserButton(testUser)
+            }
+            #endif
         }
     }
+
+    #if DEBUG
+    /// Debug builds pointed at staging with test credentials set: signs in without a code.
+    private func testUserButton(_ user: TestUser) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Button {
+                Task {
+                    if await model.signIn(as: user) { onSignedIn() }
+                }
+            } label: {
+                Text("Sign in as test user").frame(maxWidth: .infinity, minHeight: 32)
+            }
+            .buttonStyle(.bordered)
+            .disabled(model.isWorking)
+            if let error = model.testUserError {
+                ErrorLine(error: error)
+            } else {
+                Text("Debug only: \(user.email) on staging, no code needed.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+    #endif
 
     private func codeStep(email: String) -> some View {
         VStack(alignment: .leading, spacing: 16) {
