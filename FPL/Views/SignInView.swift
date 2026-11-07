@@ -16,10 +16,14 @@ struct SignInView: View {
     /// Signed in, and asking about this iPhone's notes before closing.
     @State private var isOffering = false
 
+    /// The offer once this sheet has signed in. Nil again if the session ends
+    /// before it's answered, which brings back Cancel.
+    private var offer: Int? { isOffering ? noteSync.uploadOffer : nil }
+
     var body: some View {
         NavigationStack {
             Group {
-                if isOffering, let count = noteSync.uploadOffer {
+                if let count = offer {
                     UploadOffer(count: count) { keep in
                         if keep {
                             noteSync.keepDeviceNotesInAccount()
@@ -35,10 +39,10 @@ struct SignInView: View {
                 }
             }
             .themedScreen()
-            .navigationTitle(isOffering ? "Your notes" : "Sign in")
+            .navigationTitle(offer == nil ? "Sign in" : "Your notes")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                if !isOffering {
+                if offer == nil {
                     ToolbarItem(placement: .cancellationAction) {
                         Button("Cancel") { dismiss() }
                     }
@@ -47,7 +51,7 @@ struct SignInView: View {
         }
         .presentationBackground(Theme.background)
         // Both answers are buttons, so swiping away can't leave it unanswered.
-        .interactiveDismissDisabled(isOffering)
+        .interactiveDismissDisabled(offer != nil)
     }
 }
 
