@@ -43,7 +43,7 @@ final class NoteSync: ObservableObject {
         self.account = account
         self.api = api
         self.defaults = defaults
-        account.onStateChange = { [weak self] old, new in self?.accountChanged(from: old, to: new) }
+        account.onStateChange { [weak self] old, new in self?.accountChanged(from: old, to: new) }
         fillInSyncIDs()
         removeOtherAccountsNotes()
         refreshPendingCount()
