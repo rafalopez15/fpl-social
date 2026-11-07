@@ -372,7 +372,7 @@ struct AccountCard: View {
                     }
                     .buttonStyle(.bordered)
                     if let error = account.deleteError {
-                        ErrorLine(message: error.message, isWarning: true)
+                        ErrorLine(message: error.message, isWarning: error.isWarning)
                     }
                 }
             }

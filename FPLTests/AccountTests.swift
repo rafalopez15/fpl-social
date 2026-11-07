@@ -489,6 +489,14 @@ struct DeleteAccountTests {
         #expect(store.deleteError == .connection)
     }
 
+    @Test func onlyAnUnknownErrorIsRed() {
+        #expect(DeleteAccountError.unavailable.isWarning)
+        #expect(DeleteAccountError.connection.isWarning)
+        #expect(DeleteAccountError.unconfirmed.isWarning)
+        #expect(!DeleteAccountError.unknown.isWarning)
+        #expect(DeleteAccountError(FPLAPIClient.APIError.http(status: 500, detail: nil)) == .unknown)
+    }
+
     @Test func aLostResponseDoesntSayNothingWasDeleted() async {
         for code in [URLError.Code.timedOut, .networkConnectionLost] {
             let store = store(FakeDelete(failing: URLError(code)))

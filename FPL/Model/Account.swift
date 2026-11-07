@@ -75,6 +75,9 @@ enum DeleteAccountError: Error, Equatable {
         }
     }
 
+    /// Yellow for what's on our side or the connection's, like `SignInError`.
+    var isWarning: Bool { self != .unknown }
+
     /// URL errors that mean the request couldn't have been sent.
     private static let neverSent: Set<URLError.Code> = [
         .notConnectedToInternet, .cannotFindHost, .cannotConnectToHost, .dnsLookupFailed,
