@@ -51,14 +51,7 @@ final class LinkedTeamStore: ObservableObject {
         self.client = client
         if let data = defaults.data(forKey: Self.key) {
             do {
-                let team = try JSONDecoder().decode(LinkedTeam.self, from: data)
-                linked = team
-                // Links saved by older versions also hold the manager's real name.
-                let saved = try JSONSerialization.jsonObject(with: data) as? [String: Any]
-                if saved?["managerName"] != nil {
-                    defaults.set(try JSONEncoder().encode(team), forKey: Self.key)
-                    Logger.linkedTeam.notice("Removed the manager's name from the saved team")
-                }
+                linked = try JSONDecoder().decode(LinkedTeam.self, from: data)
             } catch {
                 Logger.linkedTeam.error("Couldn't read the saved team, showing none: \(error.logSummary, privacy: .public)")
             }
@@ -148,7 +141,7 @@ final class LinkedTeamStore: ObservableObject {
     }
 
     /// Fetches the linked team's latest points, rank, transfers and squad.
-    /// Failures keep what's shown: the saved names are enough to display the link.
+    /// Failures keep what's shown: the saved team name and ID are enough to display the link.
     func refresh() async {
         guard let id = linked?.id else { return }
         // A retry after a failure shows the placeholder again while it loads.

@@ -510,23 +510,6 @@ struct ManagerTests {
         relaunched.unlink()
         #expect(LinkedTeamStore(defaults: defaults).linked == nil)
     }
-
-    @MainActor @Test func launchingRemovesASavedManagerName() throws {
-        let suite = "FPLTests.\(UUID().uuidString)"
-        let defaults = try #require(UserDefaults(suiteName: suite))
-        defer { defaults.removePersistentDomain(forName: suite) }
-        // What older versions saved.
-        defaults.set(Data(#"{"id": 1, "teamName": "Solio Moose", "managerName": "Chris Musson"}"#.utf8),
-                     forKey: "linkedTeam")
-
-        let store = LinkedTeamStore(defaults: defaults)
-
-        #expect(store.linked == LinkedTeam(id: 1, teamName: "Solio Moose"))
-        let saved = try #require(defaults.data(forKey: "linkedTeam"))
-        let json = try #require(try JSONSerialization.jsonObject(with: saved) as? [String: Any])
-        #expect(Set(json.keys) == ["id", "teamName"])
-        #expect(String(bytes: saved, encoding: .utf8)?.contains("Musson") == false)
-    }
 }
 
 struct TransferTests {
