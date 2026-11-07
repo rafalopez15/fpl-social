@@ -488,6 +488,8 @@ struct ManagerTests {
 
     @Test func lookupErrorsMapToMessages() {
         #expect(LinkError(FPLAPIClient.APIError.notFound("Manager not found")) == .notFound)
+        // The field takes 10 digits, more than the API's largest id.
+        #expect(LinkError(FPLAPIClient.APIError.http(status: 422, detail: nil)) == .notFound)
         #expect(LinkError(FPLAPIClient.APIError.dataUnavailable("FPL is unavailable right now")) == .fplUnavailable)
         #expect(LinkError(URLError(.notConnectedToInternet)) == .other)
         #expect(!LinkError.notFound.canRetry)

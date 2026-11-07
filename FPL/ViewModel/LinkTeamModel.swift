@@ -66,7 +66,7 @@ final class LinkTeamModel: ObservableObject {
 
 /// Why a lookup failed, worded for the link screen.
 enum LinkError: Equatable {
-    /// 404: no FPL team has that ID.
+    /// 404: no FPL team has that ID. Also a 422, an ID too big for the API to take.
     case notFound
     /// 503: FPL is down or updating, common around deadlines.
     case fplUnavailable
@@ -75,7 +75,7 @@ enum LinkError: Equatable {
 
     init(_ error: Error) {
         switch error {
-        case FPLAPIClient.APIError.notFound: self = .notFound
+        case FPLAPIClient.APIError.notFound, FPLAPIClient.APIError.http(status: 422, detail: _): self = .notFound
         case FPLAPIClient.APIError.dataUnavailable: self = .fplUnavailable
         default: self = .other
         }
