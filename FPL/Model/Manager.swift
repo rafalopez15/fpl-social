@@ -26,9 +26,15 @@ struct Manager: Codable, Identifiable, Hashable {
     let summaryEventRank: Int?
     /// Money in the bank at the last deadline, in tenths of a million.
     let lastDeadlineBank: Int?
-    /// Squad value at the last deadline, in tenths of a million.
+    /// Total value (squad plus bank) at the last deadline, in tenths of a million.
     let lastDeadlineValue: Int?
     let lastDeadlineTotalTransfers: Int?
+
+    /// The squad's value at the last deadline without the bank, as FPL's site shows
+    /// it, in tenths of a million. Nil when the total is missing.
+    var squadValue: Int? {
+        lastDeadlineValue.map { $0 - (lastDeadlineBank ?? 0) }
+    }
 }
 
 /// The team linked on this device, saved so it shows without a network call.
