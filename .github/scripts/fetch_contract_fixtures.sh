@@ -56,6 +56,7 @@ fetch history "managers/$manager/history"
 # No picks until the first deadline.
 fetch picks "managers/$manager/picks" 404
 
-# The manager's own names are personal; the team name is what the app and tests check.
-jq -c '.player_first_name = "" | .player_last_name = "" | .player_region_name = null' \
+# The API no longer sends the manager's real name; drop it anyway in case it comes back.
+# The region is personal too; the team name is what the app and tests check.
+jq -c 'del(.player_first_name, .player_last_name) | .player_region_name = null' \
   "$out/manager.json" > "$tmp" && mv "$tmp" "$out/manager.json"
