@@ -15,6 +15,8 @@ struct PlayerNotesView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var context
     @EnvironmentObject private var gameweeks: GameweekStore
+    @EnvironmentObject private var noteSync: NoteSync
+    @EnvironmentObject private var account: AccountStore
     @Query private var notes: [Note]
     @State private var editing: Note?
     /// The last deleted note, while its undo toast is showing.
@@ -39,7 +41,9 @@ struct PlayerNotesView: View {
             .overlay(alignment: .bottom) {
                 if let deleted {
                     UndoToast(message: "Note deleted") {
-                        context.insert(deleted.restored())
+                        let note = noteSync.restore(deleted)
+                        context.insert(note)
+                        noteSync.changed(note)
                         context.saveNotes("Restored a deleted note")
                         withAnimation { self.deleted = nil }
                     }
@@ -77,7 +81,7 @@ struct PlayerNotesView: View {
                         Button {
                             editing = note
                         } label: {
-                            NoteRow(note: note)
+                            NoteRow(note: note, isDeviceOnly: account.userID != nil && note.accountID == nil)
                         }
                         .foregroundStyle(Theme.text)
                         .themedRow()
@@ -85,6 +89,7 @@ struct PlayerNotesView: View {
                     .onDelete { offsets in
                         for note in offsets.map({ section.notes[$0] }) {
                             withAnimation { deleted = DeletedNote(note) }
+                            noteSync.deleting(note)
                             context.delete(note)
                         }
                         context.saveNotes("Deleted \(offsets.count) note(s)")
@@ -117,5 +122,7 @@ struct PlayerNotesView: View {
 #Preview {
     PlayerNotesView(player: NotePlayer(id: 1, webName: "Rogers"))
         .environmentObject(GameweekStore())
-        .modelContainer(for: Note.self, inMemory: true)
+        .environmentObject(AccountStore(auth: nil))
+        .environmentObject(NoteSync.preview)
+        .modelContainer(NoteSync.preview.container)
 }

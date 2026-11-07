@@ -416,12 +416,19 @@ struct NoteTests {
                         players: [NotePlayer(id: 2, webName: "M.Salah")], createdAt: Self.date(5))
         note.updatedAt = Self.date(6)
 
-        let restored = DeletedNote(note).restored()
+        note.accountID = UUID()
+        note.managerID = 1
+
+        let restored = DeletedNote(note).restored(at: Self.date(8))
         #expect(restored.text == "Holding Salah")
         #expect(restored.gameweek == 7)
         #expect(restored.players == note.players)
         #expect(restored.createdAt == Self.date(5))
-        #expect(restored.updatedAt == Self.date(6))
+        #expect(restored.syncID == note.syncID)
+        #expect(restored.accountID == note.accountID)
+        #expect(restored.managerID == 1)
+        // Newer than the delete, so the undo wins wherever it syncs.
+        #expect(restored.updatedAt == Self.date(8))
     }
 
     @Test func linkedPlayersAreKept() {
@@ -1124,6 +1131,8 @@ struct LoggingTests {
         #expect(FPLAPIClient.route("managers/3039435/transfers") == "managers/{id}/transfers")
         #expect(FPLAPIClient.route("managers/1") == "managers/{id}")
         #expect(FPLAPIClient.route("events/9/live") == "events/9/live")
+        #expect(FPLAPIClient.route("me/notes/6f9619ff-8b86-d011-b42d-00c04fc964ff") == "me/notes/{id}")
+        #expect(FPLAPIClient.route("me/notes") == "me/notes")
     }
 
     @Test func decodingSummaryNamesTheKeyAndPath() throws {

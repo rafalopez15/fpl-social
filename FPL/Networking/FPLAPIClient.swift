@@ -6,8 +6,14 @@
 import Foundation
 import OSLog
 
+/// The notes routes, a protocol so `NoteSync` tests can stand in for the server.
+protocol NotesAPI: Sendable {
+    func notes(since cursor: String?, accessToken: String) async throws -> NotesPage
+    func putNote(_ note: NoteBody, id: UUID, accessToken: String) async throws -> RemoteNote
+}
+
 /// Client for the fplAPI backend, all routes under `/api`.
-struct FPLAPIClient {
+struct FPLAPIClient: NotesAPI {
     /// From the `FPL_API_BASE_URL` build setting (via `FPLAPIBaseURL` in Info.plist),
     /// or in Debug the `-FPLAPIBaseURL` launch argument. A local backend is `http://127.0.0.1:5000/api`.
     var baseURL: URL = Self.configuredBaseURL
@@ -118,16 +124,37 @@ struct FPLAPIClient {
         try await get("me", accessToken: accessToken)
     }
 
+    /// `GET /api/me/notes?since={cursor}`: the signed-in user's notes changed since
+    /// the cursor, oldest first, deletions included. 422 for a cursor it didn't issue.
+    func notes(since cursor: String?, accessToken: String) async throws -> NotesPage {
+        try await send("GET", "me/notes", query: cursor.map { [URLQueryItem(name: "since", value: $0)] } ?? [],
+                       accessToken: accessToken)
+    }
+
+    /// `PUT /api/me/notes/{id}`: creates, updates or deletes a note, unless the stored
+    /// one is as new or newer. Returns the stored note either way. 404 if the id is
+    /// someone else's, 422 for a note the API won't take.
+    func putNote(_ note: NoteBody, id: UUID, accessToken: String) async throws -> RemoteNote {
+        try await send("PUT", "me/notes/\(id.uuidString.lowercased())", body: JSONEncoder.fplAPI.encode(note),
+                       accessToken: accessToken)
+    }
+
     /// Account routes are `me` and everything under it. Only they get the token:
     /// FPL routes ignore it, and it shouldn't travel where it isn't needed.
     static func isAccountRoute(_ path: String) -> Bool {
         path == "me" || path.hasPrefix("me/")
     }
 
-    func request(_ path: String, query: [URLQueryItem] = [], accessToken: String? = nil) -> URLRequest {
+    func request(_ path: String, method: String = "GET", query: [URLQueryItem] = [], body: Data? = nil,
+                 accessToken: String? = nil) -> URLRequest {
         var url = baseURL.appendingPathComponent(path)
         if !query.isEmpty { url.append(queryItems: query) }
         var request = URLRequest(url: url)
+        request.httpMethod = method
+        if let body {
+            request.httpBody = body
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        }
         if let accessToken, Self.isAccountRoute(path) {
             request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
         }
@@ -142,23 +169,29 @@ struct FPLAPIClient {
 
     private func get<T: Decodable>(_ path: String, query: [URLQueryItem] = [],
                                    accessToken: String? = nil) async throws -> T {
-        let route = Self.route(path)
+        try await send("GET", path, query: query, accessToken: accessToken)
+    }
+
+    private func send<T: Decodable>(_ method: String, _ path: String, query: [URLQueryItem] = [],
+                                    body: Data? = nil, accessToken: String? = nil) async throws -> T {
+        let route = "\(method) \(Self.route(path))"
 
         let data: Data
         let response: URLResponse
         do {
-            (data, response) = try await session.data(for: request(path, query: query, accessToken: accessToken))
+            (data, response) = try await session.data(for: request(path, method: method, query: query, body: body,
+                                                                     accessToken: accessToken))
         } catch {
             if (error as? URLError)?.code == .cancelled || error is CancellationError {
-                Logger.network.debug("GET \(route, privacy: .public) cancelled")
+                Logger.network.debug("\(route, privacy: .public) cancelled")
             } else {
-                Logger.network.error("GET \(route, privacy: .public) failed: \(error.logSummary, privacy: .public) \(error)")
+                Logger.network.error("\(route, privacy: .public) failed: \(error.logSummary, privacy: .public) \(error)")
             }
             throw error
         }
 
         guard let http = response as? HTTPURLResponse else {
-            Logger.network.fault("GET \(route, privacy: .public) returned a response that isn't HTTP")
+            Logger.network.fault("\(route, privacy: .public) returned a response that isn't HTTP")
             throw APIError.invalidResponse
         }
 
@@ -172,7 +205,7 @@ struct FPLAPIClient {
             default: .error
             }
             Logger.network.log(level: level,
-                               "GET \(route, privacy: .public) returned \(http.statusCode): \(detail ?? "no detail", privacy: .public)")
+                               "\(route, privacy: .public) returned \(http.statusCode): \(detail ?? "no detail", privacy: .public)")
             switch http.statusCode {
             case 401: throw APIError.unauthorized(detail ?? "Not signed in")
             case 404: throw APIError.notFound(detail ?? "Not found")
@@ -183,19 +216,20 @@ struct FPLAPIClient {
 
         do {
             let value = try JSONDecoder.fplAPI.decode(T.self, from: data)
-            Logger.network.debug("GET \(route, privacy: .public) \(http.statusCode), \(data.count) bytes")
+            Logger.network.debug("\(route, privacy: .public) \(http.statusCode), \(data.count) bytes")
             return value
         } catch {
             Logger.network.error("""
-                Couldn't decode \(String(describing: T.self), privacy: .public) from GET \(route, privacy: .public): \
+                Couldn't decode \(String(describing: T.self), privacy: .public) from \(route, privacy: .public): \
                 \(error.logSummary, privacy: .public)
                 """)
             throw APIError.decoding(error)
         }
     }
 
-    /// The path with the manager ID taken out, so it can be logged as public.
+    /// The path with manager and note IDs taken out, so it can be logged as public.
     static func route(_ path: String) -> String {
         path.replacingOccurrences(of: #"managers/\d+"#, with: "managers/{id}", options: .regularExpression)
+            .replacingOccurrences(of: #"notes/[0-9a-fA-F-]{36}"#, with: "notes/{id}", options: .regularExpression)
     }
 }

@@ -30,7 +30,8 @@ struct ProfileView: View {
 
                         SquadSection()
 
-                        TransfersSection(history: teamStore.transferHistory,
+                        TransfersSection(managerID: linked.id,
+                                         history: teamStore.transferHistory,
                                          net: teamStore.transferNet,
                                          failed: teamStore.transferHistoryFailed) {
                             Task { await teamStore.refresh() }
@@ -151,6 +152,7 @@ private struct LinkedTeamCard: View {
 /// The season's transfers, one card per gameweek, latest first. A transfer with
 /// a note shows it underneath. Tapping a transfer opens its note, or starts one.
 private struct TransfersSection: View {
+    let managerID: Int
     let history: [NamedTransfer]?
     /// Hidden while nil.
     let net: Int?
@@ -205,7 +207,8 @@ private struct TransfersSection: View {
         .sheet(item: $editing) { item in
             NoteEditorView(note: Note.forTransfer(item.transfer, in: notes),
                            gameweek: item.transfer.event,
-                           transfer: item.noteTransfer)
+                           transfer: item.noteTransfer,
+                           managerID: managerID)
         }
     }
 
@@ -437,5 +440,6 @@ private struct ConfirmTeamCard: View {
         .environmentObject(LinkedTeamStore())
         // No sign-in in previews: they can't reach a preview API, so the card stays hidden.
         .environmentObject(AccountStore(auth: nil))
-        .modelContainer(for: Note.self, inMemory: true)
+        .environmentObject(NoteSync.preview)
+        .modelContainer(NoteSync.preview.container)
 }

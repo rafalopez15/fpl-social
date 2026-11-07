@@ -25,10 +25,14 @@ enum LaunchOptions {
         #endif
     }
 
-    /// Where the linked team is saved: a suite emptied on every launch while UI testing.
-    static func userDefaults() -> UserDefaults {
+    /// Where the linked team and the notes cursor are saved: a suite emptied once
+    /// per launch while UI testing.
+    static func userDefaults() -> UserDefaults { defaults }
+
+    // UserDefaults is thread-safe, but not marked Sendable.
+    nonisolated(unsafe) private static let defaults: UserDefaults = {
         guard isUITesting, let defaults = UserDefaults(suiteName: "uiTesting") else { return .standard }
         defaults.removePersistentDomain(forName: "uiTesting")
         return defaults
-    }
+    }()
 }

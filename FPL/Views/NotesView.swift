@@ -13,8 +13,11 @@ struct NotesView: View {
     @EnvironmentObject private var gameweeks: GameweekStore
     /// For your points and rank in each gameweek header, when a team is linked.
     @EnvironmentObject private var linkedTeam: LinkedTeamStore
+    @EnvironmentObject private var noteSync: NoteSync
+    @EnvironmentObject private var account: AccountStore
     @Query private var notes: [Note]
     @State private var editor: EditorTarget?
+    @State private var isSigningIn = false
     /// The last deleted note, while its undo toast is showing.
     @State private var deleted: DeletedNote?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -52,7 +55,9 @@ struct NotesView: View {
             .overlay(alignment: .bottom) {
                 if let deleted {
                     UndoToast(message: "Note deleted") {
-                        context.insert(deleted.restored())
+                        let note = noteSync.restore(deleted)
+                        context.insert(note)
+                        noteSync.changed(note)
                         context.saveNotes("Restored a deleted note")
                         withAnimation { self.deleted = nil }
                     }
@@ -75,11 +80,27 @@ struct NotesView: View {
             .sheet(item: $editor) { target in
                 NoteEditorView(note: target.note, gameweek: target.gameweek)
             }
+            .sheet(isPresented: $isSigningIn) {
+                SignInView(reason: SyncInvitation.reason)
+            }
         }
     }
 
     private var list: some View {
         List {
+            // Hidden in builds without sign-in, where state is .unavailable.
+            if account.state == .signedOut {
+                Section {
+                    Button {
+                        isSigningIn = true
+                    } label: {
+                        SyncInvitation()
+                    }
+                    .foregroundStyle(Theme.text)
+                    .themedRow()
+                }
+            }
+
             if notes.isEmpty {
                 // Goes away once you've written your first note.
                 Text("Tap + on a gameweek to write down what you're thinking.")
@@ -105,7 +126,7 @@ struct NotesView: View {
                         Button {
                             editor = EditorTarget(note: note)
                         } label: {
-                            NoteRow(note: note)
+                            NoteRow(note: note, isDeviceOnly: account.userID != nil && note.accountID == nil)
                         }
                         .foregroundStyle(Theme.text)
                         .themedRow()
@@ -113,6 +134,7 @@ struct NotesView: View {
                     .onDelete { offsets in
                         for note in offsets.map({ section.notes[$0] }) {
                             withAnimation { deleted = DeletedNote(note) }
+                            noteSync.deleting(note)
                             context.delete(note)
                         }
                         context.saveNotes("Deleted \(offsets.count) note(s)")
@@ -125,6 +147,33 @@ struct NotesView: View {
         // The grouped style's default top inset leaves a large empty band.
         .contentMargins(.top, 8, for: .scrollContent)
         .listStyle(.insetGrouped)
+    }
+}
+
+/// The signed-out Notes tab's first row, which opens the sign-in sheet. It stays
+/// until you sign in: one compact row, with no close button to keep track of.
+private struct SyncInvitation: View {
+    static let reason = "Sign in to sync your notes across devices"
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "arrow.triangle.2.circlepath.icloud")
+                .font(.body.weight(.semibold))
+                .foregroundStyle(Theme.accent)
+                .accessibilityHidden(true)
+            Text(Self.reason)
+                .font(.subheadline)
+                .multilineTextAlignment(.leading)
+            Spacer(minLength: 0)
+            Image(systemName: "chevron.right")
+                .font(.footnote.weight(.semibold))
+                .foregroundStyle(Theme.secondaryText)
+                .accessibilityHidden(true)
+        }
+        .frame(minHeight: 44)
+        .contentShape(Rectangle())
+        .accessibilityElement(children: .combine)
+        .accessibilityHint("Opens sign in")
     }
 }
 
@@ -315,6 +364,8 @@ extension GameweekScore {
 /// Also used by `PlayerNotesView`.
 struct NoteRow: View {
     let note: Note
+    /// Signed in, and the note isn't in the account: it doesn't sync.
+    var isDeviceOnly = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -330,13 +381,29 @@ struct NoteRow: View {
                     .lineLimit(3)
                     .multilineTextAlignment(.leading)
             }
-            Text(detail)
-                .font(.caption)
-                .foregroundStyle(.secondary)
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 8) { detailLine }
+                VStack(alignment: .leading, spacing: 2) { detailLine }
+            }
+            .font(.caption)
+            .foregroundStyle(.secondary)
         }
         .padding(.vertical, 2)
         .frame(maxWidth: .infinity, alignment: .leading)
         .contentShape(Rectangle())
+    }
+
+    @ViewBuilder
+    private var detailLine: some View {
+        Text(detail)
+        if isDeviceOnly {
+            HStack(spacing: 3) {
+                Image(systemName: "iphone")
+                    .accessibilityHidden(true)
+                Text("On this iPhone only")
+            }
+            .fixedSize()
+        }
     }
 
     /// e.g. "Isak, Salah · 2 Nov". Transfer notes show only the date; the transfer names the players.
@@ -352,5 +419,7 @@ struct NoteRow: View {
     NotesView()
         .environmentObject(GameweekStore())
         .environmentObject(LinkedTeamStore())
-        .modelContainer(for: Note.self, inMemory: true)
+        .environmentObject(AccountStore(auth: nil))
+        .environmentObject(NoteSync.preview)
+        .modelContainer(NoteSync.preview.container)
 }

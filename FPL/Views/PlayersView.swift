@@ -174,5 +174,6 @@ private struct ElementRow: View {
 #Preview {
     PlayersView()
         .environmentObject(LinkedTeamStore())
-        .modelContainer(for: Note.self, inMemory: true)
+        .environmentObject(NoteSync.preview)
+        .modelContainer(NoteSync.preview.container)
 }
