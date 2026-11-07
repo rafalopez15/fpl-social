@@ -55,7 +55,7 @@ struct NotesView: View {
             .overlay(alignment: .bottom) {
                 if let deleted {
                     UndoToast(message: "Note deleted") {
-                        let note = deleted.restored()
+                        let note = noteSync.restore(deleted)
                         context.insert(note)
                         noteSync.changed(note)
                         context.saveNotes("Restored a deleted note")

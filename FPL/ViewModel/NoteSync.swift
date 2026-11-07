@@ -334,6 +334,14 @@ final class NoteSync: ObservableObject {
 }
 
 extension NoteSync {
+    /// A deleted note brought back by undo, to insert and pass to `changed`. It rejoins
+    /// its account only if that account is still signed in; otherwise it stays on this device.
+    func restore(_ deleted: DeletedNote, at date: Date = .now) -> Note {
+        let note = deleted.restored(at: date)
+        if note.accountID != account.userID { note.accountID = nil }
+        return note
+    }
+
     /// For previews: signed out, in memory.
     static let preview: NoteSync = {
         do {

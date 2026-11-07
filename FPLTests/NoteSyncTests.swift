@@ -314,7 +314,7 @@ struct NoteSyncTests {
         await sync.flush()
         #expect(api.state.stored[id]?.deletedAt == Self.date(2))
 
-        let restored = deleted.restored(at: Self.date(3))
+        let restored = sync.restore(deleted, at: Self.date(3))
         context.insert(restored)
         sync.changed(restored)
         await sync.flush()
@@ -474,6 +474,24 @@ extension NoteSyncTests {
         await sync.flush()
 
         #expect(api.state.puts.map(\.body.text) == ["A's note", "B's note"])
+        #expect(sync.pendingCount == 0)
+    }
+
+    @Test func undoAfterSigningOutKeepsTheNoteOnTheDevice() async throws {
+        let sync = makeSync()
+        let note = addNote("Hold", at: 1, to: sync)
+        await sync.flush()
+        let deleted = DeletedNote(note)
+        sync.deleting(note)
+        context.delete(note)
+        await account.signOut()
+
+        let restored = sync.restore(deleted)
+        context.insert(restored)
+        sync.changed(restored)
+
+        #expect(restored.accountID == nil)
+        #expect(restored.syncID == deleted.syncID)
         #expect(sync.pendingCount == 0)
     }
 }
