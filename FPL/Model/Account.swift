@@ -23,8 +23,8 @@ enum SignInError: Error, Equatable {
     case wrongCode
     case tooManyCodes
     #if DEBUG
-    /// The Debug test user's email or password was rejected.
-    case wrongPassword
+    /// Supabase rejected the Debug test user: a wrong email or password, or not confirmed.
+    case testUserRejected
     #endif
     case connection
     /// Sign-in isn't configured, Supabase is down or the API answered 503.
@@ -40,7 +40,8 @@ enum SignInError: Error, Equatable {
         case .wrongCode: "That code is wrong or has expired. Check it, or send a new one."
         case .tooManyCodes: "Too many codes sent. Wait a few minutes and try again."
         #if DEBUG
-        case .wrongPassword: "The test user's email or password is wrong. Check Config/Secrets.xcconfig."
+        case .testUserRejected:
+            "Supabase rejected the test user. Check Config/Secrets.xcconfig and that the user is confirmed."
         #endif
         case .connection: "Couldn't connect. Check your connection and try again."
         case .unavailable: "Sign-in is unavailable, try again later."

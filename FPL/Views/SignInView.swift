@@ -189,9 +189,13 @@ private struct SignInForm: View {
             }
             .buttonStyle(.bordered)
             .disabled(model.isWorking)
-            Text("Debug only: \(user.email) on staging, no code needed.")
-                .font(.footnote)
-                .foregroundStyle(.secondary)
+            if let error = model.testUserError {
+                ErrorLine(error: error)
+            } else {
+                Text("Debug only: \(user.email) on staging, no code needed.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
         }
     }
     #endif

@@ -139,7 +139,7 @@ struct SupabaseAuthService: AuthService {
             switch code {
             case .otpExpired: return .wrongCode
             #if DEBUG
-            case .invalidCredentials: return .wrongPassword
+            case .invalidCredentials, .emailNotConfirmed: return .testUserRejected
             #endif
             case .validationFailed: return .invalidEmail
             case .emailAddressNotAuthorized: return .emailNotAllowed

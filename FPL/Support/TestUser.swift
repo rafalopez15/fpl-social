@@ -15,9 +15,12 @@ struct TestUser: Equatable {
     /// Staging's Supabase project, the only one the test user exists in.
     static let stagingHost = "ltasgegihkapmdqlkaov.supabase.co"
 
-    /// Nil unless both credentials are set and the app signs in with staging.
-    static func configured(info: [String: Any] = Bundle.main.infoDictionary ?? [:]) -> TestUser? {
-        guard let email = info["TestUserEmail"] as? String, !email.isEmpty,
+    /// Nil unless both credentials are set, the app signs in with staging, and the
+    /// API isn't production, which rejects staging's tokens.
+    static func configured(info: [String: Any] = Bundle.main.infoDictionary ?? [:],
+                           apiBaseURL: URL = FPLAPIClient.configuredBaseURL) -> TestUser? {
+        guard apiBaseURL != FPLAPIClient.productionBaseURL,
+              let email = info["TestUserEmail"] as? String, !email.isEmpty,
               let password = info["TestUserPassword"] as? String, !password.isEmpty,
               let url = (info["SupabaseURL"] as? String).flatMap(URL.init(string:)),
               url.host() == stagingHost

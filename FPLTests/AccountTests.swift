@@ -56,11 +56,13 @@ final class FakeAuth: AuthService, @unchecked Sendable {
         return email
     }
 
+    #if DEBUG
     func signIn(email: String, password: String) async throws -> String {
-        guard password == state.password else { throw SignInError.wrongPassword }
+        guard password == state.password else { throw SignInError.testUserRejected }
         update { $0.email = email }
         return email
     }
+    #endif
 
     func accessToken() async throws -> String {
         guard state.email != nil else { throw SignInError.signedOut }
@@ -398,24 +400,31 @@ struct SignInModelTests {
     }
 }
 
+#if DEBUG
 struct TestUserTests {
     static let staging = "https://\(TestUser.stagingHost)"
+    static let preview = URL(string: "https://fpl-api-git-branch-fpl-social.vercel.app/api")!
     // Computed, since a stored [String: Any] isn't Sendable.
     static var info: [String: Any] {
         ["TestUserEmail": "test@example.com", "TestUserPassword": "secret", "SupabaseURL": staging]
     }
 
     @Test func showsWithCredentialsOnStaging() {
-        #expect(TestUser.configured(info: Self.info) == TestUser(email: "test@example.com", password: "secret"))
+        #expect(TestUser.configured(info: Self.info, apiBaseURL: Self.preview)
+                == TestUser(email: "test@example.com", password: "secret"))
+    }
+
+    @Test func hiddenAgainstTheProductionAPI() {
+        #expect(TestUser.configured(info: Self.info, apiBaseURL: FPLAPIClient.productionBaseURL) == nil)
     }
 
     @Test func hiddenWithoutCredentials() {
         for key in ["TestUserEmail", "TestUserPassword"] {
             var info = Self.info
             info[key] = ""
-            #expect(TestUser.configured(info: info) == nil)
+            #expect(TestUser.configured(info: info, apiBaseURL: Self.preview) == nil)
             info[key] = nil
-            #expect(TestUser.configured(info: info) == nil)
+            #expect(TestUser.configured(info: info, apiBaseURL: Self.preview) == nil)
         }
     }
 
@@ -423,7 +432,7 @@ struct TestUserTests {
         for url in ["https://another.supabase.co", ""] {
             var info = Self.info
             info["SupabaseURL"] = url
-            #expect(TestUser.configured(info: info) == nil)
+            #expect(TestUser.configured(info: info, apiBaseURL: Self.preview) == nil)
         }
     }
 
@@ -441,8 +450,10 @@ struct TestUserTests {
         let store = AccountStore(auth: FakeAuth()) { try await me($0) }
         let model = SignInModel(account: store)
         #expect(await !model.signIn(as: TestUser(email: "test@example.com", password: "wrong")))
-        #expect(model.error == .wrongPassword)
+        #expect(model.testUserError == .testUserRejected)
+        #expect(model.error == nil)
         #expect(store.state == .signedOut)
         #expect(me.count == 0)
     }
 }
+#endif

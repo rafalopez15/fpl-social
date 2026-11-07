@@ -185,6 +185,10 @@ final class SignInModel: ObservableObject {
     @Published private(set) var isWorking = false
     @Published private(set) var error: SignInError?
     @Published private(set) var canResendAt: Date?
+    #if DEBUG
+    /// Kept apart from `error` so a failed test-user sign-in doesn't mark the email field.
+    @Published private(set) var testUserError: SignInError?
+    #endif
 
     private let account: AccountStore
     private let now: () -> Date
@@ -226,12 +230,12 @@ final class SignInModel: ObservableObject {
         guard !isWorking else { return false }
         isWorking = true
         defer { isWorking = false }
-        error = nil
+        testUserError = nil
         do {
             try await account.signIn(as: user)
             return true
         } catch {
-            self.error = AccountStore.signInError(error)
+            testUserError = AccountStore.signInError(error)
             return false
         }
     }
