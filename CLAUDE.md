@@ -76,6 +76,7 @@ Signing in is optional (FPL-52; design: "Design: accounts and sign-in (FPL-11)" 
 
 - **Supabase Auth** through `supabase-swift`'s `Auth` product only (pinned to an exact version in the project). The project URL and publishable key come from the `SUPABASE_URL` and `SUPABASE_PUBLISHABLE_KEY` build settings via Info.plist (`SupabaseAuthService.configured()`). Debug uses **staging**; Release is empty until production has accounts, which makes `AccountStore.state` `.unavailable` and hides the Account card. The publishable key is meant to be public.
 - **Testing sign-in:** a staging token only works against a Vercel preview (production rejects it), so run Debug with `-FPLAPIBaseURL https://fpl-api-git-<branch>-fpl-social.vercel.app/api`. Until real email sending (FPL-55), codes only reach `fpl.social.test@gmail.com`, sometimes in spam; other addresses get "Codes can't be sent to this address yet".
+- **Test user (Debug only):** with `Config/Secrets.xcconfig` set up (gitignored; copy `Config/Secrets.example.xcconfig` and fill in `TEST_USER_EMAIL` and `TEST_USER_PASSWORD`), the sign-in sheet's email step shows "Sign in as test user", which signs in staging's password test user without a code (`TestUser`, `AccountStore.signIn(as:)`, `AuthService.signIn(email:password:)`), then calls `/me` like the code flow. It shows only in Debug builds, only when both credentials are set and only when the Supabase URL is staging's (`TestUser.stagingHost`). Release builds don't contain any of it: everything is inside `#if DEBUG`, including the `.wrongPassword` error. The user exists only in staging's Supabase project (Authentication > Users, auto-confirmed); never create it in production. `Config/Debug.xcconfig` is the app target's Debug base configuration and includes `Secrets.xcconfig` with `#include?`, so builds without it (CI, a fresh clone) just don't show the button. The credentials reach the app through Info.plist's `TestUserEmail` and `TestUserPassword`; don't log them.
 - **Flow** (`SignInView`, `SignInModel`): email, then `signInWithOTP` sends a 6-digit code (expires after 10 minutes), then `verifyOTP`, which auto-submits at 6 digits (`.oneTimeCode` autofill). Resend waits 60 seconds, Supabase's limit per address. Supabase gives the same error for a wrong and an expired code. Leave room for the Apple button above the email field (FPL-55).
 - **After signing in** the app calls `GET /api/me` once, which creates the account. If it fails (503, or a 401 on a fresh session, meaning the API is misconfigured) the app signs out again and the sheet says "Sign-in is unavailable, try again later".
 - **Account requests** go through `AccountStore.withAccessToken`: the SDK's token (refreshed if expiring), a 401 refreshes once and retries, and a second 401 or a failed refresh signs out and the card says "You were signed out". A connection error while refreshing keeps you signed in. `AccountStore.observeSession()` (a `.task` in `ContentView`) also follows the SDK's `authStateChanges` through `AuthService.sessionEnded`, so a session the SDK drops on its own (a revoked refresh token, say) shows as signed out with the same message, without waiting for an account request. Our own sign-out sets the state before telling the SDK, so its event doesn't show the message. `AccountStore.onStateChange` runs as the state changes, before views update; `NoteSync` uses it. The signed-in state carries the user id (`Account.id` from `/me`, or the saved session's at launch), which owns synced notes. `FPLAPIClient.request` adds `Authorization` only to `me` and `me/...` routes, whatever the caller passes.
@@ -88,6 +89,9 @@ Signing in is optional (FPL-52; design: "Design: accounts and sign-in (FPL-11)" 
 MVVM. Four tabs, each owning its own `NavigationStack`, switched by a custom tab bar (see Design). The Xcode project uses file-system synchronized groups, so new files under `FPL/` or `FPLTests/` are picked up without editing `project.pbxproj`.
 
 ```
+Config/
+  Debug.xcconfig                The app target's Debug settings; includes the gitignored Secrets.xcconfig
+  Secrets.example.xcconfig      Template for Secrets.xcconfig (the Debug test user's credentials)
 FPL/
   FPLApp.swift                  App entry, shows ContentView
   Model/
@@ -116,6 +120,7 @@ FPL/
   Support/
     Log.swift                   Logger categories (network, notes, linkedTeam), Error.logSummary
     LaunchOptions.swift         Debug-only launch arguments for UI tests: -uiTesting, -FPLAPIBaseURL
+    TestUser.swift              Debug-only staging test user from Config/Secrets.xcconfig, for one-tap sign-in
   Views/
     ContentView.swift           Root: AppTab enum, the four tabs in a ZStack, FloodlightsTabBar (opens on Feed)
     Theme.swift                 Floodlights colors, Color(hex:), themedScreen() and themedRow() modifiers

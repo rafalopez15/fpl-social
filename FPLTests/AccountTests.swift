@@ -21,6 +21,8 @@ final class FakeAuth: AuthService, @unchecked Sendable {
         var refreshes = 0
         var signOuts = 0
         var verifyError: SignInError?
+        /// The only password `signIn(email:password:)` accepts.
+        var password = "secret"
         var refreshError: SignInError?
         /// Runs inside `signOut()`, before the SDK's event, to look at the store at that moment.
         var onSignOut: (@Sendable () async -> Void)?
@@ -50,6 +52,12 @@ final class FakeAuth: AuthService, @unchecked Sendable {
 
     func verify(email: String, code: String) async throws -> String {
         if let error = state.verifyError { throw error }
+        update { $0.email = email }
+        return email
+    }
+
+    func signIn(email: String, password: String) async throws -> String {
+        guard password == state.password else { throw SignInError.wrongPassword }
         update { $0.email = email }
         return email
     }
@@ -387,5 +395,54 @@ struct SignInModelTests {
         model.codeText = "123456"
         #expect(await model.verify())
         #expect(account.state == .signedIn(email: "a@b.co", userID: FakeAuth.userID))
+    }
+}
+
+struct TestUserTests {
+    static let staging = "https://\(TestUser.stagingHost)"
+    // Computed, since a stored [String: Any] isn't Sendable.
+    static var info: [String: Any] {
+        ["TestUserEmail": "test@example.com", "TestUserPassword": "secret", "SupabaseURL": staging]
+    }
+
+    @Test func showsWithCredentialsOnStaging() {
+        #expect(TestUser.configured(info: Self.info) == TestUser(email: "test@example.com", password: "secret"))
+    }
+
+    @Test func hiddenWithoutCredentials() {
+        for key in ["TestUserEmail", "TestUserPassword"] {
+            var info = Self.info
+            info[key] = ""
+            #expect(TestUser.configured(info: info) == nil)
+            info[key] = nil
+            #expect(TestUser.configured(info: info) == nil)
+        }
+    }
+
+    @Test func hiddenAgainstAnotherProject() {
+        for url in ["https://another.supabase.co", ""] {
+            var info = Self.info
+            info["SupabaseURL"] = url
+            #expect(TestUser.configured(info: info) == nil)
+        }
+    }
+
+    @MainActor @Test func signsInWithThePasswordAndCallsMe() async {
+        let me = AccountStoreTests.FakeMe(accepting: "first")
+        let store = AccountStore(auth: FakeAuth()) { try await me($0) }
+        let model = SignInModel(account: store)
+        #expect(await model.signIn(as: TestUser(email: "test@example.com", password: "secret")))
+        #expect(store.state == .signedIn(email: "test@example.com", userID: FakeAuth.userID))
+        #expect(me.count == 1)
+    }
+
+    @MainActor @Test func aWrongPasswordSaysSoAndStaysSignedOut() async {
+        let me = AccountStoreTests.FakeMe(accepting: "first")
+        let store = AccountStore(auth: FakeAuth()) { try await me($0) }
+        let model = SignInModel(account: store)
+        #expect(await !model.signIn(as: TestUser(email: "test@example.com", password: "wrong")))
+        #expect(model.error == .wrongPassword)
+        #expect(store.state == .signedOut)
+        #expect(me.count == 0)
     }
 }

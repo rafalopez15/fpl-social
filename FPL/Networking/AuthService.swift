@@ -18,6 +18,10 @@ protocol AuthService: Sendable {
     func sendCode(to email: String) async throws
     /// Returns the signed-in email.
     func verify(email: String, code: String) async throws -> String
+    #if DEBUG
+    /// Signs in the staging test user. Returns the signed-in email.
+    func signIn(email: String, password: String) async throws -> String
+    #endif
     /// A valid access token, refreshed first if it's about to expire.
     func accessToken() async throws -> String
     /// Refreshes the session even if the token looks valid, after the API rejected it.
@@ -69,6 +73,15 @@ struct SupabaseAuthService: AuthService {
             return response.user.email ?? email
         }
     }
+
+    #if DEBUG
+    func signIn(email: String, password: String) async throws -> String {
+        try await mapped {
+            let session = try await client.signIn(email: email, password: password)
+            return session.user.email ?? email
+        }
+    }
+    #endif
 
     func accessToken() async throws -> String {
         try await mapped { try await client.session.accessToken }
@@ -125,6 +138,9 @@ struct SupabaseAuthService: AuthService {
         case let .api(_, code, _, response):
             switch code {
             case .otpExpired: return .wrongCode
+            #if DEBUG
+            case .invalidCredentials: return .wrongPassword
+            #endif
             case .validationFailed: return .invalidEmail
             case .emailAddressNotAuthorized: return .emailNotAllowed
             case .overEmailSendRateLimit, .overRequestRateLimit: return .tooManyCodes

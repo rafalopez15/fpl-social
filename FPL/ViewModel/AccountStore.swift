@@ -62,6 +62,21 @@ final class AccountStore: ObservableObject {
     func verify(email: String, code: String) async throws {
         guard let auth else { throw SignInError.unavailable }
         let signedInEmail = try await auth.verify(email: email, code: code)
+        try await finishSigningIn(auth, email: signedInEmail)
+    }
+
+    #if DEBUG
+    /// Signs in staging's test user with its password, then the same as `verify`.
+    func signIn(as user: TestUser) async throws {
+        guard let auth else { throw SignInError.unavailable }
+        let signedInEmail = try await auth.signIn(email: user.email, password: user.password)
+        try await finishSigningIn(auth, email: signedInEmail)
+        Logger.account.notice("Signed in as the test user")
+    }
+    #endif
+
+    /// Calls `GET /api/me` for a session Supabase just gave us.
+    private func finishSigningIn(_ auth: any AuthService, email signedInEmail: String) async throws {
         let account: Account
         do {
             account = try await authorized(fetchAccount)
@@ -204,6 +219,23 @@ final class SignInModel: ObservableObject {
     var canResend: Bool {
         canResendAt.map { now() >= $0 } ?? true
     }
+
+    #if DEBUG
+    /// True once signed in, so the sheet can close.
+    func signIn(as user: TestUser) async -> Bool {
+        guard !isWorking else { return false }
+        isWorking = true
+        defer { isWorking = false }
+        error = nil
+        do {
+            try await account.signIn(as: user)
+            return true
+        } catch {
+            self.error = AccountStore.signInError(error)
+            return false
+        }
+    }
+    #endif
 
     /// True once signed in, so the sheet can close.
     func verify() async -> Bool {
