@@ -77,20 +77,6 @@ final class NoteSync: ObservableObject {
 
     // MARK: - Account changes
 
-    /// Runs when the account's state changes. Signing out removes the account's
-    /// notes; signing in offers to keep this device's notes in the account, then syncs.
-    func accountChanged(from old: AccountStore.State, to new: AccountStore.State) {
-        removeOtherAccountsNotes()
-        guard case .signedIn = new else {
-            uploadOffer = nil
-            return
-        }
-        guard case .signedOut = old else { return }
-        let deviceOnly = deviceOnlyNotes().count
-        uploadOffer = deviceOnly > 0 ? deviceOnly : nil
-        Task { await sync() }
-    }
-
     /// The answer to `uploadOffer`: adds every device-only note to the account and syncs them.
     func keepDeviceNotesInAccount() {
         uploadOffer = nil
@@ -301,7 +287,7 @@ final class NoteSync: ObservableObject {
 
     /// Removes notes, waiting changes and the cursor of any account but the signed-in one.
     private func removeOtherAccountsNotes() {
-        let userID = account.userID
+        let userID = account.ownerID
         let notes = allNotes().filter { $0.accountID != nil && $0.accountID != userID }
         let writes = allPendingWrites().filter { $0.accountID != userID }
         if let cursorAccount = defaults.string(forKey: Self.cursorAccountKey), cursorAccount != userID?.uuidString {
@@ -328,12 +314,31 @@ final class NoteSync: ObservableObject {
     }
 
     private func refreshPendingCount() {
-        let userID = account.userID
+        let userID = account.ownerID
         pendingCount = allPendingWrites().count(where: { $0.accountID == userID })
     }
 }
 
 extension NoteSync {
+    /// Runs when the account's state changes. Signing out removes the account's
+    /// notes; signing in offers to keep this device's notes in the account, then syncs.
+    func accountChanged(from old: AccountStore.State, to new: AccountStore.State) {
+        removeOtherAccountsNotes()
+        switch (old, new) {
+        case (.signedOut, .signedIn):
+            let deviceOnly = deviceOnlyNotes().count
+            uploadOffer = deviceOnly > 0 ? deviceOnly : nil
+            Task { await sync() }
+        case (.deleting, .signedIn):
+            // Deleting the account failed: send what waited meanwhile.
+            Task { await sync() }
+        case (_, .signedIn):
+            break
+        default:
+            uploadOffer = nil
+        }
+    }
+
     /// A deleted note brought back by undo, to insert and pass to `changed`. It rejoins
     /// its account only if that account is still signed in; otherwise it stays on this device.
     func restore(_ deleted: DeletedNote, at date: Date = .now) -> Note {

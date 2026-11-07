@@ -16,6 +16,9 @@ final class AccountStore: ObservableObject {
         case signedOut
         /// `userID` is `Account.id`, which owns synced notes.
         case signedIn(email: String, userID: UUID)
+        /// `DELETE /api/me` is running. Not signed in, so syncing pauses, but the
+        /// account's notes stay until it's gone.
+        case deleting(email: String, userID: UUID)
     }
 
     @Published private(set) var state: State {
@@ -26,8 +29,6 @@ final class AccountStore: ObservableObject {
     var onStateChange: ((_ old: State, _ new: State) -> Void)?
     /// Set when a session ended on its own (not from Sign out), shown until the next sign-in.
     @Published private(set) var signedOutReason: SignInError?
-    /// True while `deleteAccount` runs. The state is already signed out by then.
-    @Published private(set) var isDeletingAccount = false
     /// Set once the account is deleted, shown until the next sign-in.
     @Published private(set) var accountDeleted = false
     /// Why the last delete failed; you're still signed in.
@@ -58,6 +59,14 @@ final class AccountStore: ObservableObject {
     var userID: UUID? {
         guard case .signedIn(_, let userID) = state else { return nil }
         return userID
+    }
+
+    /// The account whose notes stay on the device: signed in, or being deleted.
+    var ownerID: UUID? {
+        switch state {
+        case .signedIn(_, let userID), .deleting(_, let userID): userID
+        case .signedOut, .unavailable: nil
+        }
     }
 
     func sendCode(to email: String) async throws {
@@ -117,33 +126,31 @@ final class AccountStore: ObservableObject {
         Logger.account.notice("Signed out")
     }
 
-    /// Deletes the account and everything synced to it with `DELETE /api/me`.
-    /// Signs out first: that stops the notes sync and removes the account's notes
-    /// and waiting changes, which the API would refuse anyway, and it means the
-    /// SDK's own event doesn't say "You were signed out". If nothing was deleted,
-    /// signs back in and sets `deleteError`.
+    /// Deletes the account with `DELETE /api/me`. Its notes leave the device only
+    /// once it's gone; on a failure it's signed back in with `deleteError` set.
     func deleteAccount() async {
-        guard let auth, case .signedIn(let email, let userID) = state, !isDeletingAccount else { return }
-        isDeletingAccount = true
-        defer { isDeletingAccount = false }
+        guard let auth, case .signedIn(let email, let userID) = state else { return }
         deleteError = nil
         signedOutReason = nil
-        state = .signedOut
+        state = .deleting(email: email, userID: userID)
         do {
             try await authorized(deleteAccountRequest)
         } catch SignInError.signedOut {
             // The session was rejected twice, as for any account request.
             signedOutReason = .signedOut
+            state = .signedOut
             await auth.signOut()
             Logger.account.notice("Signed out while deleting the account: the session was rejected")
             return
         } catch {
-            state = .signedIn(email: email, userID: userID)
             deleteError = DeleteAccountError(error)
+            state = .signedIn(email: email, userID: userID)
             Logger.account.error("Couldn't delete the account: \(error.logSummary, privacy: .public)")
             return
         }
         accountDeleted = true
+        // Before the SDK, so its event doesn't say "You were signed out".
+        state = .signedOut
         await auth.signOut()
         Logger.account.notice("Deleted the account")
     }

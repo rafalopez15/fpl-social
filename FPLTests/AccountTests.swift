@@ -430,12 +430,15 @@ struct DeleteAccountTests {
         private let seen = OSAllocatedUnfairLock(initialState: [AccountStore.State?]())
         let failure: Error?
         weak var store: AccountStore?
+        /// Runs during the call, to look at the app at that moment.
+        var onCall: (@Sendable () async -> Void)?
         init(failing failure: Error? = nil) { self.failure = failure }
         var statesWhenCalled: [AccountStore.State?] { seen.withLock { $0 } }
 
         func callAsFunction(_ token: String) async throws {
             let state = await store?.state
             seen.withLock { $0.append(state) }
+            await onCall?()
             if let failure { throw failure }
         }
     }
@@ -449,7 +452,7 @@ struct DeleteAccountTests {
         return store
     }
 
-    @Test func deletingSignsOutFirstWithoutSayingYouWereSignedOut() async {
+    @Test func deletingPausesThenSignsOutWithoutSayingYouWereSignedOut() async {
         let delete = FakeDelete()
         let store = store(delete)
         let recorded = AccountStoreTests().stateAtSignOut(of: auth, store)
@@ -458,8 +461,8 @@ struct DeleteAccountTests {
 
         await store.deleteAccount()
 
-        // Signed out before the API call, so the queue stops and the SDK's event changes nothing.
-        #expect(delete.statesWhenCalled == [.signedOut])
+        // Not signed in during the call, so the queue pauses; signed out before the SDK hears.
+        #expect(delete.statesWhenCalled == [.deleting(email: "a@b.co", userID: FakeAuth.userID)])
         #expect(recorded.withLock { $0 } == .signedOut)
         #expect(store.state == .signedOut)
         #expect(store.signedOutReason == nil)

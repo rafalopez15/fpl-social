@@ -324,7 +324,7 @@ struct AccountCard: View {
             switch account.state {
             case .unavailable:
                 EmptyView()
-            case .signedOut where account.isDeletingAccount:
+            case .deleting:
                 card {
                     HStack(spacing: 8) {
                         ProgressView()
