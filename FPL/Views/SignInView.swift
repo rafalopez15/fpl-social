@@ -265,18 +265,28 @@ private struct FieldStyle: ViewModifier {
 }
 
 private struct ErrorLine: View {
-    let error: SignInError
+    let message: String
+    /// Yellow for what's on our side, red for what you can fix.
+    let isWarning: Bool
+
+    init(message: String, isWarning: Bool) {
+        self.message = message
+        self.isWarning = isWarning
+    }
+
+    init(error: SignInError) {
+        self.init(message: error.message, isWarning: error == .connection || error == .unavailable)
+    }
 
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: 6) {
             Image(systemName: "exclamationmark.circle.fill")
                 .accessibilityHidden(true)
-            Text(error.message)
+            Text(message)
                 .fixedSize(horizontal: false, vertical: true)
         }
         .font(.footnote)
-        // Red for what you can fix, yellow for what's on our side.
-        .foregroundStyle(error == .connection || error == .unavailable ? Theme.warning : Theme.danger)
+        .foregroundStyle(isWarning ? Theme.warning : Theme.danger)
     }
 }
 
@@ -303,6 +313,7 @@ struct AccountCard: View {
     @EnvironmentObject private var noteSync: NoteSync
     @State private var isSigningIn = false
     @State private var confirmingSignOut = false
+    @State private var confirmingDelete = false
 
     static let reason = "Sign in to sync your notes and follow teams"
 
@@ -313,8 +324,21 @@ struct AccountCard: View {
             switch account.state {
             case .unavailable:
                 EmptyView()
+            case .deleting:
+                card {
+                    HStack(spacing: 8) {
+                        ProgressView()
+                        Text("Deleting your account…")
+                            .font(.subheadline)
+                    }
+                    .accessibilityElement(children: .combine)
+                }
             case .signedOut:
                 card {
+                    if account.accountDeleted {
+                        Label("Your account was deleted.", systemImage: "checkmark.circle.fill")
+                            .font(.subheadline.weight(.semibold))
+                    }
                     Text("\(Self.reason). Everything else works without an account.")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
@@ -341,6 +365,15 @@ struct AccountCard: View {
                         Text("Sign out").frame(maxWidth: .infinity, minHeight: 32)
                     }
                     .buttonStyle(.bordered)
+                    Button(role: .destructive) {
+                        confirmingDelete = true
+                    } label: {
+                        Text("Delete account").frame(maxWidth: .infinity, minHeight: 32)
+                    }
+                    .buttonStyle(.bordered)
+                    if let error = account.deleteError {
+                        ErrorLine(message: error.message, isWarning: error.isWarning)
+                    }
                 }
             }
         }
@@ -356,14 +389,25 @@ struct AccountCard: View {
                 Text(Self.signOutMessage(email: email, unsynced: noteSync.pendingCount))
             }
         }
+        .confirmationDialog("Delete your account?", isPresented: $confirmingDelete, titleVisibility: .visible) {
+            Button("Delete account", role: .destructive) {
+                Task { await account.deleteAccount() }
+            }
+        } message: {
+            Text(Self.deleteMessage)
+        }
         .onChange(of: confirmingSignOut) { _, isShowing in
             // One last try, so the warning about unsynced changes is only shown when it's real.
             if isShowing { Task { await noteSync.flush() } }
         }
         .onChange(of: account.state) {
             confirmingSignOut = false
+            confirmingDelete = false
         }
     }
+
+    static let deleteMessage = "This deletes your account, your synced notes and the teams you follow. "
+        + "Your FPL teams aren't affected."
 
     nonisolated static func signOutMessage(email: String, unsynced: Int) -> String {
         var message = "Your synced notes leave this iPhone until you sign in again, "

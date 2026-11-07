@@ -124,6 +124,12 @@ struct FPLAPIClient: NotesAPI {
         try await get("me", accessToken: accessToken)
     }
 
+    /// `DELETE /api/me`: deletes the account, its synced notes and its teams. 204,
+    /// also when it's already gone; 503 when nothing could be deleted.
+    func deleteMe(accessToken: String) async throws {
+        _ = try await data("DELETE", "me", accessToken: accessToken)
+    }
+
     /// `GET /api/me/notes?since={cursor}`: the signed-in user's notes changed since
     /// the cursor, oldest first, deletions included. 422 for a cursor it didn't issue.
     func notes(since cursor: String?, accessToken: String) async throws -> NotesPage {
@@ -174,6 +180,21 @@ struct FPLAPIClient: NotesAPI {
 
     private func send<T: Decodable>(_ method: String, _ path: String, query: [URLQueryItem] = [],
                                     body: Data? = nil, accessToken: String? = nil) async throws -> T {
+        let data = try await data(method, path, query: query, body: body, accessToken: accessToken)
+        do {
+            return try JSONDecoder.fplAPI.decode(T.self, from: data)
+        } catch {
+            Logger.network.error("""
+                Couldn't decode \(String(describing: T.self), privacy: .public) from \
+                \(method, privacy: .public) \(Self.route(path), privacy: .public): \(error.logSummary, privacy: .public)
+                """)
+            throw APIError.decoding(error)
+        }
+    }
+
+    /// Sends the request and returns the body of a 2xx response; other statuses throw `APIError`.
+    private func data(_ method: String, _ path: String, query: [URLQueryItem] = [],
+                      body: Data? = nil, accessToken: String? = nil) async throws -> Data {
         let route = "\(method) \(Self.route(path))"
 
         let data: Data
@@ -214,17 +235,8 @@ struct FPLAPIClient: NotesAPI {
             }
         }
 
-        do {
-            let value = try JSONDecoder.fplAPI.decode(T.self, from: data)
-            Logger.network.debug("\(route, privacy: .public) \(http.statusCode), \(data.count) bytes")
-            return value
-        } catch {
-            Logger.network.error("""
-                Couldn't decode \(String(describing: T.self), privacy: .public) from \(route, privacy: .public): \
-                \(error.logSummary, privacy: .public)
-                """)
-            throw APIError.decoding(error)
-        }
+        Logger.network.debug("\(route, privacy: .public) \(http.statusCode), \(data.count) bytes")
+        return data
     }
 
     /// The path with manager and note IDs taken out, so it can be logged as public.

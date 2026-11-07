@@ -509,3 +509,66 @@ struct NoteTextLimitTests {
         #expect(Note.capped("Hold") == "Hold")
     }
 }
+
+/// Deleting the account, as it reaches the account's notes.
+extension NoteSyncTests {
+    func deletingAccount(failing failure: Error?) -> AccountStore {
+        AccountStore(auth: auth, fetchAccount: { _ in AccountStoreTests.account },
+                     deleteAccount: { _ in if let failure { throw failure } })
+    }
+
+    @Test func deletingTheAccountRemovesItsNotesOnly() async throws {
+        let account = deletingAccount(failing: nil)
+        let sync = NoteSync(container: container, account: account, api: api, defaults: defaults)
+        _ = addNote("Synced", at: 1, to: sync)
+        context.insert(Note(text: "Device only", gameweek: 10))
+        context.saveNotes("test")
+
+        await account.deleteAccount()
+
+        #expect(try notes().map(\.text) == ["Device only"])
+        #expect(try context.fetch(FetchDescriptor<PendingNoteWrite>()).isEmpty)
+    }
+
+    @Test func aFailedDeleteKeepsEverythingAndSendsWhatWaited() async throws {
+        let account = deletingAccount(failing: FPLAPIClient.APIError.dataUnavailable("Couldn't delete your account right now"))
+        let sync = NoteSync(container: container, account: account, api: api, defaults: defaults)
+        api.update { $0.pages = [NotesPage(notes: [], cursor: "c1", more: false)] }
+        await sync.pull()
+        api.update { $0.putError = URLError(.notConnectedToInternet) }
+        _ = addNote("Not synced yet", at: 1, to: sync)
+        context.insert(Note(text: "Device only", gameweek: 10))
+        context.saveNotes("test")
+        await sync.flush()
+        api.update { $0.putError = nil }
+
+        await account.deleteAccount()
+        // Sending what waited, then pulling.
+        for _ in 0..<1000 where api.state.sinces.count < 2 { await Task.yield() }
+
+        #expect(Set(try notes().map(\.text)) == ["Not synced yet", "Device only"])
+        #expect(api.state.puts.map(\.body.text) == ["Not synced yet"])
+        #expect(sync.uploadOffer == nil)
+        // Picks up from the cursor rather than downloading every note again.
+        #expect(api.state.sinces.last == "c1")
+    }
+
+    @Test func notesStayWhileDeleting() async throws {
+        let delete = DeleteAccountTests.FakeDelete()
+        let account = AccountStore(auth: auth, fetchAccount: { _ in AccountStoreTests.account },
+                                   deleteAccount: { try await delete($0) })
+        delete.store = account
+        let sync = NoteSync(container: container, account: account, api: api, defaults: defaults)
+        _ = addNote("Synced", at: 1, to: sync)
+        let counted = OSAllocatedUnfairLock(initialState: -1)
+        delete.onCall = { @MainActor [context] in
+            let count = (try? context.fetch(FetchDescriptor<Note>()).count) ?? 0
+            counted.withLock { $0 = count }
+        }
+
+        await account.deleteAccount()
+
+        #expect(counted.withLock { $0 } == 1)
+        #expect(try notes().isEmpty)
+    }
+}
