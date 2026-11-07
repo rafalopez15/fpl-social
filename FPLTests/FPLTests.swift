@@ -442,7 +442,7 @@ struct ManagerTests {
 
     /// `GET /api/managers/1`, trimmed.
     static let response = """
-    {"id": 1, "name": "Solio Moose", "player_first_name": "Chris", "player_last_name": "Musson",
+    {"id": 1, "name": "Solio Moose",
      "current_event": 9, "started_event": 1, "favourite_team": 14, "player_region_name": "England",
      "summary_overall_points": 563, "summary_overall_rank": 1571477,
      "summary_event_points": 55, "summary_event_rank": 1972509,
@@ -457,19 +457,23 @@ struct ManagerTests {
         let manager = try Self.manager()
         #expect(manager.id == 1)
         #expect(manager.name == "Solio Moose")
-        #expect(manager.managerName == "Chris Musson")
         #expect(manager.summaryOverallRank == 1_571_477)
         #expect(manager.lastDeadlineValue == 1022)
     }
 
     @Test func optionalFieldsCanBeNullOrMissing() throws {
         let manager = try Self.manager("""
-        {"id": 2, "name": "New Team", "player_first_name": "Ana", "player_last_name": "",
-         "current_event": null}
+        {"id": 2, "name": "New Team", "current_event": null}
         """)
         #expect(manager.currentEvent == nil)
         #expect(manager.summaryOverallPoints == nil)
-        #expect(manager.managerName == "Ana")
+    }
+
+    @Test func stillDecodesWhileTheAPISendsNames() throws {
+        let manager = try Self.manager("""
+        {"id": 2, "name": "New Team", "player_first_name": "Ana", "player_last_name": "Lee"}
+        """)
+        #expect(manager.name == "New Team")
     }
 
     @Test(arguments: [
@@ -501,10 +505,27 @@ struct ManagerTests {
 
         // A new store reads the saved link, as after relaunching the app.
         let relaunched = LinkedTeamStore(defaults: defaults)
-        #expect(relaunched.linked == LinkedTeam(id: 1, teamName: "Solio Moose", managerName: "Chris Musson"))
+        #expect(relaunched.linked == LinkedTeam(id: 1, teamName: "Solio Moose"))
 
         relaunched.unlink()
         #expect(LinkedTeamStore(defaults: defaults).linked == nil)
+    }
+
+    @MainActor @Test func launchingRemovesASavedManagerName() throws {
+        let suite = "FPLTests.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        // What older versions saved.
+        defaults.set(Data(#"{"id": 1, "teamName": "Solio Moose", "managerName": "Chris Musson"}"#.utf8),
+                     forKey: "linkedTeam")
+
+        let store = LinkedTeamStore(defaults: defaults)
+
+        #expect(store.linked == LinkedTeam(id: 1, teamName: "Solio Moose"))
+        let saved = try #require(defaults.data(forKey: "linkedTeam"))
+        let json = try #require(try JSONSerialization.jsonObject(with: saved) as? [String: Any])
+        #expect(Set(json.keys) == ["id", "teamName"])
+        #expect(String(bytes: saved, encoding: .utf8)?.contains("Musson") == false)
     }
 }
 

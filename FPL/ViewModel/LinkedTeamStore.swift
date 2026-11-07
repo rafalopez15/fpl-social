@@ -51,7 +51,14 @@ final class LinkedTeamStore: ObservableObject {
         self.client = client
         if let data = defaults.data(forKey: Self.key) {
             do {
-                linked = try JSONDecoder().decode(LinkedTeam.self, from: data)
+                let team = try JSONDecoder().decode(LinkedTeam.self, from: data)
+                linked = team
+                // Links saved by older versions also hold the manager's real name.
+                let saved = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+                if saved?["managerName"] != nil {
+                    defaults.set(try JSONEncoder().encode(team), forKey: Self.key)
+                    Logger.linkedTeam.notice("Removed the manager's name from the saved team")
+                }
             } catch {
                 Logger.linkedTeam.error("Couldn't read the saved team, showing none: \(error.logSummary, privacy: .public)")
             }
