@@ -8,6 +8,10 @@
 	<string>$(SUPABASE_URL)</string>
 	<key>SupabasePublishableKey</key>
 	<string>$(SUPABASE_PUBLISHABLE_KEY)</string>
+	<key>TestUserEmail</key>
+	<string>$(TEST_USER_EMAIL)</string>
+	<key>TestUserPassword</key>
+	<string>$(TEST_USER_PASSWORD)</string>
 	<key>UIUserInterfaceStyle</key>
 	<string>Dark</string>
 	<key>NSAppTransportSecurity</key>
