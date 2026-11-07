@@ -83,7 +83,7 @@ private struct LinkedTeamCard: View {
                         .foregroundStyle(.secondary)
                     Text(team.teamName)
                         .font(.title2.weight(.bold))
-                    Text("\(team.managerName) · ID \(String(team.id))")
+                    Text("ID \(String(team.id))")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                 }
@@ -386,7 +386,7 @@ private struct LinkTeamForm: View {
     }
 }
 
-/// "Is this your team?" with the team and manager name, before saving the link.
+/// "Is this your team?" with the team name, points and rank, before saving the link.
 private struct ConfirmTeamCard: View {
     let manager: Manager
     let onConfirm: () -> Void
@@ -426,12 +426,12 @@ private struct ConfirmTeamCard: View {
         }
     }
 
-    /// e.g. "Chris Musson · 563 pts · Rank 1,571,477"
+    /// e.g. "563 pts · Rank 1,571,477", or "ID 1" for a team with neither yet.
     private var details: String {
-        var parts = [manager.managerName]
+        var parts: [String] = []
         if let points = manager.summaryOverallPoints { parts.append("\(points.formatted()) pts") }
         if let rank = manager.summaryOverallRank { parts.append("Rank \(rank.formatted())") }
-        return parts.joined(separator: " · ")
+        return parts.isEmpty ? "ID \(String(manager.id))" : parts.joined(separator: " · ")
     }
 }
 

@@ -141,7 +141,7 @@ final class LinkedTeamStore: ObservableObject {
     }
 
     /// Fetches the linked team's latest points, rank, transfers and squad.
-    /// Failures keep what's shown: the saved names are enough to display the link.
+    /// Failures keep what's shown: the saved team name and ID are enough to display the link.
     func refresh() async {
         guard let id = linked?.id else { return }
         // A retry after a failure shows the placeholder again while it loads.
