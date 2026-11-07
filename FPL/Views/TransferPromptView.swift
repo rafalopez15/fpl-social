@@ -96,7 +96,7 @@ private struct TransferCard: View {
             TextField("Why did you bring in \(transfer.playerIn.webName)?", text: $text, axis: .vertical)
                 .lineLimit(3...8)
                 .onChange(of: text) {
-                    if text.count > Note.maxTextLength { text = String(text.prefix(Note.maxTextLength)) }
+                    if text.unicodeScalars.count > Note.maxTextLength { text = Note.capped(text) }
                 }
                 .padding(10)
                 .background(Theme.background, in: RoundedRectangle(cornerRadius: 10, style: .continuous))

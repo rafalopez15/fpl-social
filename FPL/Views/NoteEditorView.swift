@@ -160,7 +160,7 @@ struct NoteEditorView: View {
         TextEditor(text: $text)
             .focused($isEditorFocused)
             .onChange(of: text) {
-                if text.count > Note.maxTextLength { text = String(text.prefix(Note.maxTextLength)) }
+                if text.unicodeScalars.count > Note.maxTextLength { text = Note.capped(text) }
             }
             .scrollContentBackground(.hidden)
             .padding(8)

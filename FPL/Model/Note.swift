@@ -30,8 +30,22 @@ final class Note {
     /// For a transfer note, the FPL team the transfer was made in.
     var managerID: Int?
 
-    /// The longest text the server takes.
+    /// The longest text the server takes, in Unicode code points.
     static let maxTextLength = 5000
+
+    /// `text` cut to `maxTextLength`, dropping whole characters. The server counts
+    /// code points, and one emoji can be several.
+    nonisolated static func capped(_ text: String) -> String {
+        guard text.unicodeScalars.count > maxTextLength else { return text }
+        var length = 0
+        var end = text.startIndex
+        for index in text.indices {
+            length += text[index].unicodeScalars.count
+            guard length <= maxTextLength else { break }
+            end = text.index(after: index)
+        }
+        return String(text[..<end])
+    }
 
     init(text: String, gameweek: Int?, players: [NotePlayer] = [], transfer: NoteTransfer? = nil,
          managerID: Int? = nil, createdAt: Date = .now) {

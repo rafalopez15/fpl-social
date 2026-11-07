@@ -477,3 +477,17 @@ extension NoteSyncTests {
         #expect(sync.pendingCount == 0)
     }
 }
+
+struct NoteTextLimitTests {
+    @Test func capsByCodePointsWithoutSplittingACharacter() {
+        // One character, five code points.
+        let family = "👨‍👩‍👧"
+        let letters = String(repeating: "a", count: Note.maxTextLength - 3)
+        #expect((letters + family).count <= Note.maxTextLength)
+        #expect(Note.capped(letters + family) == letters)
+
+        let exact = String(repeating: "a", count: Note.maxTextLength)
+        #expect(Note.capped(exact) == exact)
+        #expect(Note.capped("Hold") == "Hold")
+    }
+}
