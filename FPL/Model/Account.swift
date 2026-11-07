@@ -51,15 +51,23 @@ enum SignInError: Error, Equatable {
     }
 }
 
-/// Why deleting the account failed. In every case nothing was deleted and
-/// you're still signed in.
+/// Why deleting the account failed. You're still signed in, and except for
+/// `unconfirmed`, nothing was deleted.
 enum DeleteAccountError: Error, Equatable {
     /// 503: the API couldn't delete it right now.
     case unavailable
+    /// The request never reached the API.
     case connection
+    /// The connection failed after the request may have reached the API, so the
+    /// account may be gone. Retrying is safe: a second delete is also a 204.
+    case unconfirmed
     case unknown
 
     init(_ error: Error) {
+        if let error = error as? URLError {
+            self = Self.neverSent.contains(error.code) ? .connection : .unconfirmed
+            return
+        }
         switch AccountStore.signInError(error) {
         case .unavailable: self = .unavailable
         case .connection: self = .connection
@@ -67,10 +75,17 @@ enum DeleteAccountError: Error, Equatable {
         }
     }
 
+    /// URL errors that mean the request couldn't have been sent.
+    private static let neverSent: Set<URLError.Code> = [
+        .notConnectedToInternet, .cannotFindHost, .cannotConnectToHost, .dnsLookupFailed,
+        .dataNotAllowed, .internationalRoamingOff, .secureConnectionFailed,
+    ]
+
     var message: String {
         switch self {
         case .unavailable: "Couldn't delete your account right now. Nothing was deleted; try again later."
         case .connection: "Couldn't connect, so nothing was deleted. Check your connection and try again."
+        case .unconfirmed: "We couldn't confirm your account was deleted. Check your connection and try again."
         case .unknown: "Something went wrong, so nothing was deleted. Try again."
         }
     }

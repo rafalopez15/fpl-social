@@ -489,6 +489,15 @@ struct DeleteAccountTests {
         #expect(store.deleteError == .connection)
     }
 
+    @Test func aLostResponseDoesntSayNothingWasDeleted() async {
+        for code in [URLError.Code.timedOut, .networkConnectionLost] {
+            let store = store(FakeDelete(failing: URLError(code)))
+            await store.deleteAccount()
+            #expect(store.deleteError == .unconfirmed)
+            #expect(store.deleteError?.message.contains("nothing was deleted") == false)
+        }
+    }
+
     @Test func aRejectedSessionSignsOutAsUsual() async {
         let delete = FakeDelete(failing: FPLAPIClient.APIError.unauthorized("Not signed in"))
         let store = store(delete)
