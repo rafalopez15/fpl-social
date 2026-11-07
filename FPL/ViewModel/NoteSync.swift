@@ -121,7 +121,7 @@ final class NoteSync: ObservableObject {
     /// Sends the outbox, oldest change first. Stops at the first failure that a
     /// retry could fix (offline, server down, signed out) and tries again later.
     func flush() async {
-        guard let userID = account.userID else { return }
+        guard account.userID != nil else { return }
         guard !isFlushing else {
             flushAgain = true
             return
@@ -133,10 +133,14 @@ final class NoteSync: ObservableObject {
         }
         repeat {
             flushAgain = false
-            for write in pendingWrites(for: userID) {
-                guard await send(write, userID: userID) else { return }
+            // Read again each pass: another account may have signed in while sending.
+            guard let userID = account.userID else { return }
+            for noteID in pendingWrites(for: userID).map(\.noteID) {
+                // A pull while sending, or signing out, may have removed it.
+                guard let write = pendingWrite(for: noteID), write.accountID == userID else { continue }
+                guard await send(write, userID: userID) else { break }
             }
-        } while flushAgain && account.userID == userID
+        } while flushAgain
     }
 
     /// Pulls the server's changes since the stored cursor, page by page.

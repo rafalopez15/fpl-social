@@ -105,6 +105,8 @@ final class FakeNotesAPI: NotesAPI, @unchecked Sendable {
         var sinces: [String?] = []
         /// A cursor the API rejects with 422.
         var rejectedCursor: String?
+        /// Runs once, during the next PUT, to change things while it's sending.
+        var duringPut: (@Sendable () async -> Void)?
     }
 
     private let lock = OSAllocatedUnfairLock(initialState: State())
@@ -123,7 +125,12 @@ final class FakeNotesAPI: NotesAPI, @unchecked Sendable {
     }
 
     func putNote(_ note: NoteBody, id: UUID, accessToken: String) async throws -> RemoteNote {
-        try lock.withLock { state in
+        let duringPut = lock.withLock { state in
+            defer { state.duringPut = nil }
+            return state.duringPut
+        }
+        await duringPut?()
+        return try lock.withLock { state in
             if let error = state.putError { throw error }
             state.puts.append((id, note))
             if let stored = state.stored[id], stored.updatedAt >= note.updatedAt { return stored }
@@ -418,5 +425,55 @@ struct NoteSyncTests {
         context.saveNotes("test")
         _ = makeSync()
         #expect(note.syncID != nil)
+    }
+}
+
+/// Syncing while the store or the account changes underneath it.
+extension NoteSyncTests {
+    @Test func aChangeAPullReplacesWhileFlushingIsntSent() async throws {
+        api.update { $0.putError = URLError(.notConnectedToInternet) }
+        let sync = makeSync()
+        let first = addNote("First", at: 1, to: sync)
+        let second = addNote("Second", at: 2, to: sync)
+        let secondID = try #require(second.syncID)
+        await sync.flush()
+
+        // While the first one is sending, a pull brings a newer copy of the second.
+        api.update {
+            $0.putError = nil
+            $0.pages = [NotesPage(notes: [.note(secondID, "From another iPhone", updated: NoteSyncTests.date(3))],
+                                  cursor: "c1", more: false)]
+            $0.duringPut = { await sync.pull() }
+        }
+        await sync.flush()
+
+        #expect(api.state.puts.map(\.id) == [first.syncID])
+        #expect(second.text == "From another iPhone")
+        #expect(sync.pendingCount == 0)
+    }
+
+    @Test func aFlushAskedForByTheNextAccountRuns() async throws {
+        let other = UUID()
+        let userID = OSAllocatedUnfairLock(initialState: FakeAuth.userID)
+        let account = AccountStore(auth: auth) { _ in Account(id: userID.withLock { $0 }, createdAt: .now) }
+        let sync = NoteSync(container: container, account: account, api: api, defaults: defaults)
+        _ = addNote("A's note", at: 1, to: sync)
+
+        // While A's note is sending, A signs out, B signs in and writes a note.
+        api.update { [container] in
+            $0.duringPut = { @MainActor in
+                await account.signOut()
+                userID.withLock { $0 = other }
+                try? await account.verify(email: "b@b.co", code: "123456")
+                let note = Note(text: "B's note", gameweek: 10)
+                container.mainContext.insert(note)
+                sync.added(note)
+                await sync.flush()
+            }
+        }
+        await sync.flush()
+
+        #expect(api.state.puts.map(\.body.text) == ["A's note", "B's note"])
+        #expect(sync.pendingCount == 0)
     }
 }
