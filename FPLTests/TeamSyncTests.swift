@@ -18,6 +18,8 @@ final class FakeTeamsAPI: TeamsAPI, @unchecked Sendable {
         var putError: Error?
         /// How many times the teams were listed.
         var lists = 0
+        /// Teams whose details fail to load, as when FPL is down.
+        var failingManagers: Set<Int> = []
     }
 
     private let lock = OSAllocatedUnfairLock(initialState: State())
@@ -51,7 +53,8 @@ final class FakeTeamsAPI: TeamsAPI, @unchecked Sendable {
     }
 
     func manager(id: Int) async throws -> Manager {
-        try TeamSyncTests.manager(id)
+        if state.failingManagers.contains(id) { throw FPLAPIClient.APIError.dataUnavailable("FPL is unavailable") }
+        return try TeamSyncTests.manager(id)
     }
 
     static func team(_ id: Int, _ relation: AccountTeam.Relation = .mine) -> AccountTeam {
@@ -201,6 +204,27 @@ struct TeamSyncTests {
 
         #expect(sync.errors[.following] == .alreadyYours)
         #expect(api.state.puts.isEmpty)
+    }
+
+    @Test func theTeamShownCantBeFollowedEvenIfTeamsDidntLoad() async throws {
+        let (sync, _) = makeSync()
+        linked.link(try Self.manager(5))
+        #expect(sync.mine.isEmpty)
+
+        #expect(await !sync.follow(try Self.manager(5)))
+        #expect(sync.errors[.following] == .alreadyYours)
+        #expect(api.state.puts.isEmpty)
+    }
+
+    @Test func unlinkingLoadsTheNextTeamIfNeeded() async throws {
+        api.update { $0.teams = [FakeTeamsAPI.team(5), FakeTeamsAPI.team(3)]; $0.failingManagers = [3] }
+        let (sync, _) = makeSync()
+        await sync.refresh()
+        #expect(sync.managers[3] == nil)
+        api.update { $0.failingManagers = [] }
+
+        await sync.unlink()
+        #expect(linked.linked?.id == 3)
     }
 
     @Test func signingOutKeepsTheTeamShown() async throws {

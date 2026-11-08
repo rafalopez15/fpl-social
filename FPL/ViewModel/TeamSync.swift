@@ -108,18 +108,24 @@ final class TeamSync: ObservableObject {
         guard await perform(in: .yourTeams, { try await $0.deleteTeam(id: id, accessToken: $1) }) != nil else { return }
         teams.removeAll { $0.managerId == id }
         teamToAdd = nil
-        if let next = mine.first, let manager = managers[next.managerId] {
-            linked.link(manager)
-        } else {
-            linked.unlink()
+        if let next = mine.first?.managerId {
+            // Its details may not have loaded; the account still has it either way.
+            if managers[next] == nil { await loadManagers([next]) }
+            if let manager = managers[next] {
+                linked.link(manager)
+                Logger.linkedTeam.notice("Removed a team from the account")
+                return
+            }
         }
+        linked.unlink()
         Logger.linkedTeam.notice("Removed a team from the account")
     }
 
     /// Returns whether it's followed now. One of your own teams can't be: the
-    /// API would turn it into a followed team.
+    /// API would turn it into a followed team. The one on Profile counts even if
+    /// the account's teams didn't load.
     func follow(_ manager: Manager) async -> Bool {
-        guard !mine.contains(where: { $0.managerId == manager.id }) else {
+        guard !mine.contains(where: { $0.managerId == manager.id }), manager.id != linked.linked?.id else {
             errors[.following] = .alreadyYours
             return false
         }
