@@ -10,11 +10,6 @@ import Foundation
 @MainActor
 class ElementViewModel: ObservableObject {
     @Published private(set) var elements: [Element] = []
-    /// Teams by id, loaded once. Empty if the teams request failed.
-    @Published private(set) var teams: [Int: Team] = [:]
-    /// Upcoming fixtures, loaded once. Nil until loaded, or when there are none
-    /// to show; the stats popover then hides its fixtures section.
-    @Published private(set) var schedule: FixtureSchedule?
     @Published private(set) var isLoading: Bool = true
     @Published private(set) var errorMessage: String? = nil
     @Published var searchQuery: String = ""
@@ -32,7 +27,8 @@ class ElementViewModel: ObservableObject {
     }
 
     private let client: FPLAPIClient
-    /// Teams and fixtures, shared with Profile's squad so they load once.
+    /// Teams and fixtures, shared with Profile's squad so they load once; the view reads
+    /// them from the shared store.
     private let lookups: TeamsAndFixturesStore
     /// Incremented per fetch so only the most recent one updates state.
     private var fetchGeneration = 0
@@ -59,8 +55,6 @@ class ElementViewModel: ObservableObject {
             async let lookupsLoaded: Void = lookups.loadIfNeeded()
             let elements = try await client.elements(position: position)
             await lookupsLoaded
-            teams = lookups.teams
-            schedule = lookups.schedule
             // A newer fetch (e.g. the position changed) owns the state now.
             guard generation == fetchGeneration else { return }
             self.elements = elements

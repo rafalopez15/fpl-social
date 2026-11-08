@@ -228,9 +228,10 @@ struct FPLAPIClient: NotesAPI, TeamsAPI {
         var shared = false
         do {
             let request = request(path, method: method, query: query, body: body, accessToken: accessToken)
-            // Stores that load the same list at the same moment (teams, events, fixtures at
-            // launch) share one request. Account routes carry a token and never share.
-            if method == "GET", request.value(forHTTPHeaderField: "Authorization") == nil {
+            // Stores that load the same list at the same moment share one request. Only these
+            // lists: a shared request isn't cancelled with its caller, and these are the ones
+            // that duplicate at launch.
+            if method == "GET", InFlightRequests.sharedPaths.contains(path) {
                 let answer = try await InFlightRequests.shared.data(for: request, session: session)
                 (data, response, shared) = (answer.data, answer.response, answer.shared)
             } else {
@@ -286,8 +287,16 @@ struct FPLAPIClient: NotesAPI, TeamsAPI {
 /// One made after the first finishes goes out again, so a refresh is always fresh.
 actor InFlightRequests {
     static let shared = InFlightRequests()
+    /// The routes that share; no account route is among them.
+    static let sharedPaths: Set<String> = ["teams", "events", "fixtures", "elements"]
 
-    private var running: [URL: Task<(Data, URLResponse), Error>] = [:]
+    /// Per session too, so clients on different sessions (tests' stubs) never share.
+    private struct Key: Hashable {
+        let url: URL
+        let session: ObjectIdentifier
+    }
+
+    private var running: [Key: Task<(Data, URLResponse), Error>] = [:]
 
     struct Answer {
         let data: Data
@@ -301,13 +310,14 @@ actor InFlightRequests {
             let (data, response) = try await session.data(for: request)
             return Answer(data: data, response: response, shared: false)
         }
-        if let task = running[url] {
+        let key = Key(url: url, session: ObjectIdentifier(session))
+        if let task = running[key] {
             let (data, response) = try await task.value
             return Answer(data: data, response: response, shared: true)
         }
         let task = Task { try await session.data(for: request) }
-        running[url] = task
-        defer { running[url] = nil }
+        running[key] = task
+        defer { running[key] = nil }
         let (data, response) = try await task.value
         return Answer(data: data, response: response, shared: false)
     }

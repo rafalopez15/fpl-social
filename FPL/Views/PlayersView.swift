@@ -10,6 +10,8 @@ import SwiftUI
 /// The Players tab: players for one position, with search, sort and a price filter.
 struct PlayersView: View {
     @StateObject private var viewModel = ElementViewModel(position: .forward)
+    /// Teams and fixtures, shared with Profile's squad.
+    @ObservedObject private var lookups = TeamsAndFixturesStore.shared
 
     var body: some View {
         NavigationStack {
@@ -31,10 +33,10 @@ struct PlayersView: View {
                 } else {
                     List(viewModel.filteredElements) { element in
                         ElementRow(element: element,
-                                   team: viewModel.teams[element.team],
+                                   team: lookups.teams[element.team],
                                    sort: viewModel.sort,
-                                   fixtures: viewModel.schedule?.upcoming(for: element.team) ?? [],
-                                   teams: viewModel.teams)
+                                   fixtures: lookups.schedule?.upcoming(for: element.team) ?? [],
+                                   teams: lookups.teams)
                             .themedRow()
                     }
                     .listStyle(.insetGrouped)

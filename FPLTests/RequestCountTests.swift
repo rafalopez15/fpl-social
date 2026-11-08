@@ -17,6 +17,7 @@ extension StubbedNetworkTests {
         init() {
             ProfileRefreshTests().stubAll()
             StubURLProtocol.responses["/api/teams"] = (200, "[]")
+            StubURLProtocol.responses["/api/elements/position/4"] = (200, "[]")
             // Long enough for the calls below to overlap.
             StubURLProtocol.delay = 0.2
             StubURLProtocol.resetRequests()
@@ -39,6 +40,28 @@ extension StubbedNetworkTests {
             // One made after the first finished goes out again.
             _ = try await client.teams()
             #expect(StubURLProtocol.requests["/api/teams"] == 2)
+        }
+
+        @Test func otherRoutesAreNotShared() async throws {
+            // Only the lists that duplicate at launch share, so other requests still cancel
+            // with their caller.
+            async let first = client.elements(position: .forward)
+            async let second = client.elements(position: .forward)
+            _ = try await (first, second)
+            #expect(StubURLProtocol.requests["/api/elements/position/4"] == 2)
+        }
+
+        @Test func betweenSeasonsGameweeksLoadOnce() async {
+            // No current or next gameweek, as after the season's last match.
+            StubURLProtocol.responses["/api/events"] = (200, ProfileRefreshTests.events
+                .replacingOccurrences(of: #""is_current": true"#, with: #""is_current": false"#)
+                .replacingOccurrences(of: #""is_next": true"#, with: #""is_next": false"#))
+            let gameweeks = GameweekStore(client: client)
+            let lookups = TeamsAndFixturesStore(client: client, gameweeks: gameweeks)
+            await lookups.loadIfNeeded()
+            await lookups.loadIfNeeded()
+            #expect(gameweeks.current == nil)
+            #expect(StubURLProtocol.requests["/api/events"] == 1)
         }
 
         @Test func accountRequestsAreNeverShared() async throws {

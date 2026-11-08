@@ -47,7 +47,9 @@ final class TeamsAndFixturesStore: ObservableObject {
     private func loadSchedule() async {
         guard schedule == nil else { return }
         async let fixtures = upcomingFixtures()
-        await gameweeks.loadIfNeeded()
+        // Not loadIfNeeded alone: between seasons there's no current gameweek, and that
+        // would reload them on every call.
+        if gameweeks.events.isEmpty { await gameweeks.loadIfNeeded() }
         guard let fixtures = await fixtures, !gameweeks.events.isEmpty else { return }
         schedule = FixtureSchedule(fixtures: fixtures, events: gameweeks.events)
     }
