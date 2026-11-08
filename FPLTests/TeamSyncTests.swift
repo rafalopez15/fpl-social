@@ -16,6 +16,8 @@ final class FakeTeamsAPI: TeamsAPI, @unchecked Sendable {
         var puts: [(id: Int, relation: AccountTeam.Relation)] = []
         var deletes: [Int] = []
         var putError: Error?
+        /// How many times the teams were listed.
+        var lists = 0
     }
 
     private let lock = OSAllocatedUnfairLock(initialState: State())
@@ -23,7 +25,10 @@ final class FakeTeamsAPI: TeamsAPI, @unchecked Sendable {
     func update(_ change: @Sendable (inout State) -> Void) { lock.withLock { change(&$0) } }
 
     func myTeams(accessToken: String) async throws -> [AccountTeam] {
-        state.teams
+        lock.withLock { state in
+            state.lists += 1
+            return state.teams
+        }
     }
 
     func putTeam(id: Int, relation: AccountTeam.Relation, accessToken: String) async throws -> AccountTeam {
@@ -72,7 +77,7 @@ struct TeamSyncTests {
     /// Signed in unless `signedIn` is false.
     func makeSync(signedIn: Bool = true) -> (TeamSync, AccountStore) {
         let account = AccountStore(auth: FakeAuth(email: signedIn ? "a@b.co" : nil)) { _ in AccountStoreTests.account }
-        return (TeamSync(account: account, linked: linked, api: api), account)
+        return (TeamSync(account: account, linked: linked, api: api, defaults: defaults), account)
     }
 
     /// The sign-in's sync runs in its own task, and names load off the main actor.
@@ -208,6 +213,62 @@ struct TeamSyncTests {
         #expect(linked.linked?.id == 5)
         #expect(sync.teams.isEmpty)
         #expect(sync.myTeams.isEmpty)
+    }
+
+    @Test func aDeviceTeamThatCouldntJoinIsTriedAgainAndStaysShown() async throws {
+        api.update { $0.teams = [FakeTeamsAPI.team(5)]; $0.putError = URLError(.notConnectedToInternet) }
+        let (sync, account) = makeSync(signedIn: false)
+        linked.link(try Self.manager(7))
+
+        try await account.verify(email: "a@b.co", code: "123456")
+        await waitFor { !sync.myTeams.isEmpty }
+        await sync.refresh()
+        // Not replaced by the account's team while it waits to join.
+        #expect(linked.linked?.id == 7)
+        #expect(api.state.puts.isEmpty)
+
+        api.update { $0.putError = nil }
+        await sync.refresh()
+        #expect(api.state.puts.map(\.id) == [7])
+        #expect(linked.linked?.id == 7)
+        #expect(sync.mine.map(\.managerId).contains(7))
+    }
+
+    @Test func aTeamLeftBySigningOutDoesntJoinTheNextAccount() async throws {
+        api.update { $0.teams = [FakeTeamsAPI.team(5)] }
+        let (sync, account) = makeSync()
+        await sync.refresh()
+        await account.signOut()
+        #expect(linked.linked?.id == 5)
+
+        // Someone else's account, with no teams.
+        api.update { $0.teams = [] }
+        try await account.verify(email: "b@b.co", code: "123456")
+        await waitFor { api.state.lists >= 2 }
+
+        #expect(api.state.puts.isEmpty)
+        #expect(linked.linked?.id == 5)
+    }
+
+    @Test func aTeamTheAccountFollowsStaysFollowed() async throws {
+        api.update { $0.teams = [FakeTeamsAPI.team(9, .following), FakeTeamsAPI.team(5)] }
+        let (sync, account) = makeSync(signedIn: false)
+        linked.link(try Self.manager(9))
+
+        try await account.verify(email: "a@b.co", code: "123456")
+        await waitFor { linked.linked?.id == 5 }
+
+        #expect(api.state.puts.isEmpty)
+        #expect(sync.following.map(\.managerId) == [9])
+        #expect(linked.linked?.id == 5)
+    }
+
+    @Test func aRefreshAskedForMeanwhileRunsAfter() async {
+        let (sync, _) = makeSync()
+        async let first: Void = sync.refresh()
+        async let second: Void = sync.refresh()
+        _ = await (first, second)
+        #expect(api.state.lists == 2)
     }
 
     @Test func aLimitErrorIsWordedPlainly() {

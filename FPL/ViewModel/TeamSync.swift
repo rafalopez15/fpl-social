@@ -24,12 +24,23 @@ final class TeamSync: ObservableObject {
     private let account: AccountStore
     private let linked: LinkedTeamStore
     private let api: any TeamsAPI
+    private let defaults: UserDefaults
     private var isRefreshing = false
+    private var refreshAgain = false
 
-    init(account: AccountStore, linked: LinkedTeamStore, api: any TeamsAPI = FPLAPIClient()) {
+    /// This device's team, still to be added to the account as yours. Kept until
+    /// it is, and shown meanwhile.
+    private static let teamToAddKey = "teamToAdd"
+    /// True when the device's team was left by signing out, so it's someone's account
+    /// team rather than one linked on this device.
+    private static let fromAccountKey = "linkedTeamFromAccount"
+
+    init(account: AccountStore, linked: LinkedTeamStore, api: any TeamsAPI = FPLAPIClient(),
+         defaults: UserDefaults = .standard) {
         self.account = account
         self.linked = linked
         self.api = api
+        self.defaults = defaults
         account.onStateChange { [weak self] old, new in self?.accountChanged(from: old, to: new) }
     }
 
@@ -48,7 +59,18 @@ final class TeamSync: ObservableObject {
     /// Loads the account's teams, and shows one of yours on Profile if the one
     /// shown isn't yours any more (removed on another device).
     func refresh() async {
-        await refresh(keeping: nil)
+        guard account.userID != nil else { return }
+        // One at a time; a refresh asked for meanwhile runs once more afterwards.
+        guard !isRefreshing else {
+            refreshAgain = true
+            return
+        }
+        isRefreshing = true
+        defer { isRefreshing = false }
+        repeat {
+            refreshAgain = false
+            await refreshOnce()
+        } while refreshAgain && account.userID != nil
     }
 
     /// Links a team you confirmed. Signed in, it joins the account as yours
@@ -56,11 +78,13 @@ final class TeamSync: ObservableObject {
     func link(_ manager: Manager) async -> Bool {
         guard account.userID != nil else {
             linked.link(manager)
+            defaults.set(false, forKey: Self.fromAccountKey)
             return true
         }
         guard let team = await perform(in: .yourTeams, { try await $0.putTeam(id: manager.id, relation: .mine, accessToken: $1) })
         else { return false }
         save(team, manager)
+        teamToAdd = nil
         linked.link(manager)
         Logger.linkedTeam.notice("Added a team to the account")
         return true
@@ -69,6 +93,7 @@ final class TeamSync: ObservableObject {
     /// Shows another of your teams on Profile.
     func show(_ id: Int) {
         guard let manager = managers[id], linked.linked?.id != id else { return }
+        teamToAdd = nil
         linked.link(manager)
     }
 
@@ -82,6 +107,7 @@ final class TeamSync: ObservableObject {
         }
         guard await perform(in: .yourTeams, { try await $0.deleteTeam(id: id, accessToken: $1) }) != nil else { return }
         teams.removeAll { $0.managerId == id }
+        teamToAdd = nil
         if let next = mine.first, let manager = managers[next.managerId] {
             linked.link(manager)
         } else {
@@ -127,29 +153,26 @@ final class TeamSync: ObservableObject {
             teams = []
             managers = [:]
             errors = [:]
+            teamToAdd = nil
+            if old != .unavailable, linked.linked != nil { defaults.set(true, forKey: Self.fromAccountKey) }
         }
     }
 
-    /// A team linked on this device joins the account as yours, without asking:
-    /// it's one team id, not anything you wrote.
+    private var teamToAdd: Int? {
+        get { defaults.object(forKey: Self.teamToAddKey) as? Int }
+        set { defaults.set(newValue, forKey: Self.teamToAddKey) }
+    }
+
+    /// A team linked on this device while signed out joins the account as yours,
+    /// without asking: it's one team id, not anything you wrote. One left by
+    /// signing out belongs to that account, so it doesn't join this one.
     private func signedIn() async {
-        var keeping: Int?
-        if let id = linked.linked?.id {
-            do {
-                _ = try await account.withAccessToken { [api] in try await api.putTeam(id: id, relation: .mine, accessToken: $0) }
-            } catch {
-                // Keep showing it rather than switch away from a team the account doesn't have yet.
-                keeping = id
-                Logger.linkedTeam.notice("Couldn't add this device's team to the account: \(error.logSummary, privacy: .public)")
-            }
-        }
-        await refresh(keeping: keeping)
+        if let id = linked.linked?.id, !defaults.bool(forKey: Self.fromAccountKey) { teamToAdd = id }
+        defaults.removeObject(forKey: Self.fromAccountKey)
+        await refresh()
     }
 
-    private func refresh(keeping: Int?) async {
-        guard account.userID != nil, !isRefreshing else { return }
-        isRefreshing = true
-        defer { isRefreshing = false }
+    private func refreshOnce() async {
         let teams: [AccountTeam]
         do {
             teams = try await account.withAccessToken { [api] in try await api.myTeams(accessToken: $0) }
@@ -159,15 +182,39 @@ final class TeamSync: ObservableObject {
         }
         guard account.userID != nil else { return }
         self.teams = teams
-        await loadManagers(teams.map(\.managerId))
+        await addTeamToAdd()
+        await loadManagers(self.teams.map(\.managerId))
         guard account.userID != nil else { return }
 
+        // A team still waiting to join stays shown; so does any while the transfer
+        // prompt is up, which switching would close unsaved.
         let current = linked.linked?.id
-        // Not while the transfer prompt is up: switching would close it unsaved.
-        if linked.pendingTransfers.isEmpty, keeping == nil || current != keeping,
+        if linked.pendingTransfers.isEmpty, current == nil || current != teamToAdd,
            !mine.contains(where: { $0.managerId == current }),
            let newest = mine.first, let manager = managers[newest.managerId] {
             linked.link(manager)
+        }
+    }
+
+    /// Adds the device's team unless the account has it already, in either list:
+    /// a team the account follows stays followed.
+    private func addTeamToAdd() async {
+        guard let id = teamToAdd else { return }
+        guard !teams.contains(where: { $0.managerId == id }) else {
+            teamToAdd = nil
+            return
+        }
+        do {
+            let team = try await account.withAccessToken { [api] in
+                try await api.putTeam(id: id, relation: .mine, accessToken: $0)
+            }
+            teams.removeAll { $0.managerId == id }
+            teams.insert(team, at: 0)
+            teamToAdd = nil
+            Logger.linkedTeam.notice("Added this device's team to the account")
+        } catch {
+            errors[.yourTeams] = TeamError(error)
+            Logger.linkedTeam.notice("Couldn't add this device's team to the account: \(error.logSummary, privacy: .public)")
         }
     }
 

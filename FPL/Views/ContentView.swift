@@ -138,7 +138,7 @@ private enum AppModels {
     static let noteSync = NoteSync(container: notes, account: account, defaults: LaunchOptions.userDefaults())
 
     static let linkedTeam = LinkedTeamStore(defaults: LaunchOptions.userDefaults())
-    static let teamSync = TeamSync(account: account, linked: linkedTeam)
+    static let teamSync = TeamSync(account: account, linked: linkedTeam, defaults: LaunchOptions.userDefaults())
 }
 
 /// Tab bar: a rounded card with a solid green pill behind the selected tab.
