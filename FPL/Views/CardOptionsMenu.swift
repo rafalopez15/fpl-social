@@ -6,6 +6,7 @@
 import SwiftUI
 
 /// The `…` button in a card's top-right corner, holding the card's rarely used actions.
+/// Its offsets assume the card's 16pt padding and a place at the top trailing edge.
 struct CardOptionsMenu<Content: View>: View {
     /// What VoiceOver calls it, e.g. "Team options".
     let label: String

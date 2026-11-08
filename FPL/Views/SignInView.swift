@@ -328,24 +328,7 @@ struct AccountCard: View {
                     .buttonStyle(.borderedProminent)
                 }
             case .signedIn(let email, _):
-                card {
-                    CardOptionsMenu(label: "Account options") {
-                        Button("Sign out", systemImage: "rectangle.portrait.and.arrow.right") {
-                            confirmingSignOut = true
-                        }
-                        Button("Delete account", systemImage: "trash", role: .destructive) {
-                            confirmingDelete = true
-                        }
-                    }
-                } content: {
-                    Text("Signed in as \(email)")
-                        .font(.subheadline)
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                    if let error = account.deleteError {
-                        ErrorLine(message: error.message, isWarning: error.isWarning)
-                    }
-                }
+                signedInCard(email: email)
             }
         }
         .sheet(isPresented: $isSigningIn) {
@@ -391,25 +374,67 @@ struct AccountCard: View {
         return message
     }
 
+    /// The header, then `content`.
     private func card(@ViewBuilder content: () -> some View) -> some View {
-        card(options: { EmptyView() }, content: content)
+        VStack(alignment: .leading, spacing: 12) {
+            header
+            content()
+        }
+        .modifier(AccountCardSurface())
     }
 
-    /// `options` sits in the top-right corner, beside the header and content.
-    private func card(@ViewBuilder options: () -> some View, @ViewBuilder content: () -> some View) -> some View {
-        HStack(alignment: .top) {
-            VStack(alignment: .leading, spacing: 12) {
-                Text("ACCOUNT")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                    .accessibilityAddTraits(.isHeader)
-                content()
+    /// The header and email with the … menu beside them, like the team card's, and
+    /// a failed delete's message and retry underneath at full width.
+    private func signedInCard(email: String) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: 12) {
+                    header
+                    Text("Signed in as \(email)")
+                        .font(.subheadline)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                }
+                Spacer(minLength: 0)
+                CardOptionsMenu(label: "Account options") {
+                    Button("Sign out", systemImage: "rectangle.portrait.and.arrow.right") {
+                        confirmingSignOut = true
+                    }
+                    Button("Delete account", systemImage: "trash", role: .destructive) {
+                        confirmingDelete = true
+                    }
+                }
             }
-            Spacer(minLength: 0)
-            options()
+            if let error = account.deleteError {
+                HStack(alignment: .firstTextBaseline) {
+                    ErrorLine(message: error.message, isWarning: error.isWarning)
+                    Spacer(minLength: 8)
+                    // Already confirmed once, and retrying is safe: a second delete is also a 204.
+                    Button("Try again") {
+                        Task { await account.deleteAccount() }
+                    }
+                    .font(.subheadline.weight(.semibold))
+                    .frame(minHeight: 44)
+                    .accessibilityHint("Deletes your account")
+                }
+            }
         }
-        .padding(16)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Theme.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .modifier(AccountCardSurface())
+    }
+
+    private var header: some View {
+        Text("ACCOUNT")
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(.secondary)
+            .accessibilityAddTraits(.isHeader)
+    }
+}
+
+private struct AccountCardSurface: ViewModifier {
+    func body(content: Content) -> some View {
+        content
+            .padding(16)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Theme.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 }
