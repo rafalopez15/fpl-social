@@ -21,7 +21,7 @@ struct ErrorLine: View {
     }
 
     init(error: TeamError) {
-        self.init(message: error.message, isWarning: error == .fplUnavailable || error == .connection)
+        self.init(message: error.message, isWarning: [.fplUnavailable, .connection, .tooManyAdds].contains(error))
     }
 
     init(error: LinkError) {

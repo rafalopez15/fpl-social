@@ -297,7 +297,9 @@ struct TeamSyncTests {
 
     @Test func aLimitErrorIsWordedPlainly() {
         #expect(TeamError(FPLAPIClient.APIError.http(status: 409, detail: "Team limit reached")).message
-                == "You can have up to 10 teams, including ones you follow.")
+                == "You've reached the limit of 1,000 teams.")
+        #expect(TeamError(FPLAPIClient.APIError.http(status: 429, detail: "Too many teams added, try again later"))
+                == .tooManyAdds)
         #expect(TeamError(URLError(.notConnectedToInternet)) == .connection)
         #expect(TeamError(FPLAPIClient.APIError.notFound("Manager not found")) == .notFound)
         #expect(TeamError(FPLAPIClient.APIError.http(status: 422, detail: nil)) == .notFound)
