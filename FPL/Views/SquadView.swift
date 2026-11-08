@@ -74,8 +74,6 @@ struct SquadSection: View {
         .task(id: earlier) {
             if let earlier { await teamStore.loadSquad(gameweek: earlier) }
         }
-        // A different team starts again from its latest squad.
-        .onChange(of: teamStore.linked?.id) { selected = nil }
     }
 
     private func load() async {

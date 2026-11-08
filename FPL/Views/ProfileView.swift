@@ -101,6 +101,9 @@ struct ProfileView: View {
             .task(id: teamStore.linked?.id) {
                 await teamStore.refresh()
             }
+            // A different team starts again from its latest squad. Here rather than in
+            // SquadSection, which isn't on screen while another team is picked.
+            .onChange(of: teamStore.linked?.id) { squadGameweek = nil }
         }
     }
 }
