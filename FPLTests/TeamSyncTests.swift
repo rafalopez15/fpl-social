@@ -20,6 +20,8 @@ final class FakeTeamsAPI: TeamsAPI, @unchecked Sendable {
         var lists = 0
         /// Teams whose details fail to load, as when FPL is down.
         var failingManagers: Set<Int> = []
+        /// Thrown by `myTeams`, as when offline.
+        var listError: Error?
     }
 
     private let lock = OSAllocatedUnfairLock(initialState: State())
@@ -27,8 +29,9 @@ final class FakeTeamsAPI: TeamsAPI, @unchecked Sendable {
     func update(_ change: @Sendable (inout State) -> Void) { lock.withLock { change(&$0) } }
 
     func myTeams(accessToken: String) async throws -> [AccountTeam] {
-        lock.withLock { state in
+        try lock.withLock { state in
             state.lists += 1
+            if let error = state.listError { throw error }
             return state.teams
         }
     }
@@ -195,6 +198,28 @@ struct TeamSyncTests {
         #expect(api.state.deletes == [9])
     }
 
+    @Test func aFailedFirstLoadIsntAnEmptyList() async throws {
+        let (sync, _) = makeSync()
+        api.update { $0.listError = URLError(.notConnectedToInternet) }
+        await sync.refresh()
+        #expect(!sync.hasLoaded)
+        #expect(sync.loadFailed)
+
+        api.update { $0.listError = nil }
+        await sync.refresh()
+        #expect(sync.hasLoaded)
+        #expect(!sync.loadFailed)
+    }
+
+    @Test func undoRefusesWhatsNowYourOwnTeam() async throws {
+        api.update { $0.teams = [FakeTeamsAPI.team(9)] }
+        let (sync, _) = makeSync()
+        await sync.refresh()
+        #expect(await !sync.refollow(9))
+        #expect(sync.errors[.following] == .alreadyYours)
+        #expect(api.state.puts.isEmpty)
+    }
+
     @Test func undoingAnUnfollowFollowsAgain() async throws {
         let (sync, _) = makeSync()
         #expect(await sync.follow(try Self.manager(9)))
@@ -333,6 +358,13 @@ struct FollowingCardTests {
         #expect(FollowingCard.summary(count: 0) == "No teams yet")
         #expect(FollowingCard.summary(count: 1) == "1 team")
         #expect(FollowingCard.summary(count: 3) == "3 teams")
-        #expect(FollowingCard.summary(count: 1000) == "1,000 teams")
+        // Formatted for the device's region, e.g. "1,000" or "1.000".
+        #expect(FollowingCard.summary(count: 1000) == "\(1000.formatted()) teams")
+    }
+
+    @Test func showsNoCountUntilTheTeamsHaveLoaded() {
+        #expect(FollowingCard.status(count: 0, loaded: false, failed: false) == "Loading…")
+        #expect(FollowingCard.status(count: 0, loaded: false, failed: true) == "Couldn't load your teams")
+        #expect(FollowingCard.status(count: 0, loaded: true, failed: false) == "No teams yet")
     }
 }

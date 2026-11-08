@@ -23,13 +23,24 @@ struct FollowingCard: View {
         }
     }
 
+    /// The row's text: the count once the account's teams have loaded, since an empty
+    /// list before then doesn't mean you follow none.
+    nonisolated static func status(count: Int, loaded: Bool, failed: Bool) -> String {
+        if loaded { return summary(count: count) }
+        return failed ? "Couldn't load your teams" : "Loading…"
+    }
+
+    private var status: String {
+        Self.status(count: teamSync.following.count, loaded: teamSync.hasLoaded, failed: teamSync.loadFailed)
+    }
+
     var body: some View {
         if account.state != .unavailable {
             VStack(alignment: .leading, spacing: 4) {
                 Text("FOLLOWING")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
-                    .accessibilityHidden(true)
+                    .accessibilityAddTraits(.isHeader)
                 if account.userID == nil {
                     Button {
                         isSigningIn = true
@@ -42,10 +53,10 @@ struct FollowingCard: View {
                     NavigationLink {
                         FollowingView()
                     } label: {
-                        row(Self.summary(count: teamSync.following.count))
+                        row(status)
                     }
                     .buttonStyle(.plain)
-                    .accessibilityLabel("Following, \(Self.summary(count: teamSync.following.count))")
+                    .accessibilityLabel("Following, \(status)")
                 }
             }
             .padding(16)
@@ -109,7 +120,22 @@ struct FollowingView: View {
             }
 
             Section {
-                if teamSync.following.isEmpty {
+                if !teamSync.hasLoaded {
+                    if teamSync.loadFailed {
+                        HStack {
+                            Text("Couldn't load your teams")
+                                .foregroundStyle(.secondary)
+                            Spacer()
+                            Button("Retry") { Task { await teamSync.refresh() } }
+                        }
+                        .frame(minHeight: 44)
+                        .themedRow()
+                    } else {
+                        ProgressView()
+                            .frame(maxWidth: .infinity, minHeight: 44)
+                            .themedRow()
+                    }
+                } else if teamSync.following.isEmpty {
                     VStack(alignment: .leading, spacing: 4) {
                         Text("You're not following any teams yet")
                             .font(.body.weight(.semibold))
