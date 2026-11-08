@@ -39,8 +39,9 @@ final class LinkedTeamStore: ObservableObject {
     private let defaults: UserDefaults
     private let client: FPLAPIClient
     private static let key = "linkedTeam"
-    /// Transfers made before this time have been prompted for, or predate the link.
-    private static let seenKey = "transfersSeenUntil"
+    /// Per team id: transfers made before this time have been prompted for, or
+    /// predate the team's first link. Per team, so switching between teams keeps each one's.
+    private static let seenKey = "transfersSeenUntilByTeam"
     private var isChecking = false
     /// The season so far: points and rank per gameweek for the Notes tab, and
     /// transfers per gameweek for `freeTransfers`. Nil until loaded.
@@ -60,9 +61,20 @@ final class LinkedTeamStore: ObservableObject {
         if linked != nil, transfersSeenUntil == nil { transfersSeenUntil = .now }
     }
 
+    func transfersSeenUntil(for id: Int) -> Date? {
+        defaults.dictionary(forKey: Self.seenKey)?[String(id)] as? Date
+    }
+
+    private func setTransfersSeenUntil(_ date: Date?, for id: Int) {
+        var seen = defaults.dictionary(forKey: Self.seenKey) ?? [:]
+        seen[String(id)] = date
+        defaults.set(seen, forKey: Self.seenKey)
+    }
+
+    /// The linked team's.
     private var transfersSeenUntil: Date? {
-        get { defaults.object(forKey: Self.seenKey) as? Date }
-        set { defaults.set(newValue, forKey: Self.seenKey) }
+        get { linked.flatMap { transfersSeenUntil(for: $0.id) } }
+        set { if let id = linked?.id { setTransfersSeenUntil(newValue, for: id) } }
     }
 
     /// Links a team the user has confirmed, replacing any linked before.
@@ -77,7 +89,8 @@ final class LinkedTeamStore: ObservableObject {
         }
         Logger.linkedTeam.notice("Linked team \(team.id, privacy: .private)")
         // Only transfers made from now on get a prompt; the season so far doesn't.
-        transfersSeenUntil = .now
+        // A team linked before, such as one switched back to, keeps its time.
+        if transfersSeenUntil == nil { transfersSeenUntil = .now }
         pendingTransfers = []
         transferHistory = nil
         transferHistoryFailed = false
@@ -90,6 +103,7 @@ final class LinkedTeamStore: ObservableObject {
     }
 
     func unlink() {
+        if let id = linked?.id { setTransfersSeenUntil(nil, for: id) }
         linked = nil
         manager = nil
         pendingTransfers = []
@@ -102,7 +116,6 @@ final class LinkedTeamStore: ObservableObject {
         earlierSquads = [:]
         earlierPoints = [:]
         defaults.removeObject(forKey: Self.key)
-        defaults.removeObject(forKey: Self.seenKey)
         Logger.linkedTeam.notice("Unlinked team")
     }
 

@@ -725,11 +725,27 @@ struct TransferTests {
 
         let before = Date.now
         LinkedTeamStore(defaults: defaults).link(try ManagerTests.manager())
-        let seen = try #require(defaults.object(forKey: "transfersSeenUntil") as? Date)
+        let seen = try #require(LinkedTeamStore(defaults: defaults).transfersSeenUntil(for: 1))
         #expect(seen >= before)
 
         LinkedTeamStore(defaults: defaults).unlink()
-        #expect(defaults.object(forKey: "transfersSeenUntil") == nil)
+        #expect(LinkedTeamStore(defaults: defaults).transfersSeenUntil(for: 1) == nil)
+    }
+
+    @MainActor @Test func switchingBackKeepsATeamsSeenTime() throws {
+        let suite = "FPLTests.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let store = LinkedTeamStore(defaults: defaults)
+        store.link(try TeamSyncTests.manager(1))
+        let first = try #require(store.transfersSeenUntil(for: 1))
+
+        store.link(try TeamSyncTests.manager(2))
+        store.link(try TeamSyncTests.manager(1))
+
+        // Transfers team 1 made while team 2 was shown still get the prompt.
+        #expect(store.transfersSeenUntil(for: 1) == first)
+        #expect(store.transfersSeenUntil(for: 2) != nil)
     }
 }
 

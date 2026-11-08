@@ -163,7 +163,9 @@ final class TeamSync: ObservableObject {
         guard account.userID != nil else { return }
 
         let current = linked.linked?.id
-        if keeping == nil || current != keeping, !mine.contains(where: { $0.managerId == current }),
+        // Not while the transfer prompt is up: switching would close it unsaved.
+        if linked.pendingTransfers.isEmpty, keeping == nil || current != keeping,
+           !mine.contains(where: { $0.managerId == current }),
            let newest = mine.first, let manager = managers[newest.managerId] {
             linked.link(manager)
         }
