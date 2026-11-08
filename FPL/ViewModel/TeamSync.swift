@@ -230,6 +230,8 @@ final class TeamSync: ObservableObject {
     /// Team names come from `/api/managers/{id}`, cached at the CDN. A team that
     /// fails to load is left out of lists until the next refresh.
     private func loadManagers(_ ids: [Int]) async {
+        // The team on Profile has usually just loaded there.
+        if let shown = linked.manager, ids.contains(shown.id), managers[shown.id] == nil { managers[shown.id] = shown }
         let missing = ids.filter { managers[$0] == nil }
         guard !missing.isEmpty else { return }
         await withTaskGroup(of: Manager?.self) { [api] group in

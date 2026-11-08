@@ -32,12 +32,16 @@ class ElementViewModel: ObservableObject {
     }
 
     private let client: FPLAPIClient
+    /// Teams and fixtures, shared with Profile's squad so they load once.
+    private let lookups: TeamsAndFixturesStore
     /// Incremented per fetch so only the most recent one updates state.
     private var fetchGeneration = 0
 
-    init(position: Element.Position = .forward, client: FPLAPIClient = FPLAPIClient()) {
+    init(position: Element.Position = .forward, client: FPLAPIClient = FPLAPIClient(),
+         lookups: TeamsAndFixturesStore = .shared) {
         self.position = position
         self.client = client
+        self.lookups = lookups
     }
 
     func fetchElements() async {
@@ -52,11 +56,11 @@ class ElementViewModel: ObservableObject {
         do {
             // Teams and fixtures load alongside the players. A failure there just
             // hides team names or fixtures, and they're retried on the next fetch.
-            async let teamsLoaded: Void = loadTeamsIfNeeded()
-            async let scheduleLoaded: Void = loadScheduleIfNeeded()
+            async let lookupsLoaded: Void = lookups.loadIfNeeded()
             let elements = try await client.elements(position: position)
-            await teamsLoaded
-            await scheduleLoaded
+            await lookupsLoaded
+            teams = lookups.teams
+            schedule = lookups.schedule
             // A newer fetch (e.g. the position changed) owns the state now.
             guard generation == fetchGeneration else { return }
             self.elements = elements
@@ -64,19 +68,6 @@ class ElementViewModel: ObservableObject {
             guard generation == fetchGeneration, !Self.isCancellation(error) else { return }
             errorMessage = error.localizedDescription
         }
-    }
-
-    private func loadTeamsIfNeeded() async {
-        guard teams.isEmpty, let fetched = try? await client.teams() else { return }
-        teams = Dictionary(fetched.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
-    }
-
-    private func loadScheduleIfNeeded() async {
-        guard schedule == nil else { return }
-        async let fixtures = client.upcomingFixtures()
-        async let events = client.events()
-        guard let fixtures = try? await fixtures, let events = try? await events else { return }
-        schedule = FixtureSchedule(fixtures: fixtures, events: events)
     }
 
     private static func isCancellation(_ error: Error) -> Bool {

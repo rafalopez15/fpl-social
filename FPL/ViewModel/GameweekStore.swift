@@ -17,15 +17,20 @@ final class GameweekStore: ObservableObject {
     /// True when the last load failed, so the Notes tab can offer a retry.
     @Published private(set) var didFail = false
 
+    /// The app's gameweeks, shared with the stores that build fixture schedules.
+    static let shared = GameweekStore()
+
     private let client: FPLAPIClient
-    private var isLoading = false
+    /// The load running now, which another call waits for instead of starting another.
+    private var runningLoad: Task<Bool, Never>?
 
     init(client: FPLAPIClient = FPLAPIClient()) {
         self.client = client
     }
 
+    /// Loads unless loaded; waits for a load already running.
     func loadIfNeeded() async {
-        guard current == nil, !isLoading else { return }
+        guard current == nil else { return }
         await reload()
     }
 
@@ -34,8 +39,14 @@ final class GameweekStore: ObservableObject {
     /// what's loaded. Returns false if it failed.
     @discardableResult
     func reload() async -> Bool {
-        isLoading = true
-        defer { isLoading = false }
+        if let runningLoad { return await runningLoad.value }
+        let load = Task { await loadOnce() }
+        runningLoad = load
+        defer { runningLoad = nil }
+        return await load.value
+    }
+
+    private func loadOnce() async -> Bool {
         // With nothing to show, a retry shows the spinner again rather than the error.
         if events.isEmpty { didFail = false }
         guard let events = try? await client.events() else {

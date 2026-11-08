@@ -11,7 +11,7 @@ import SwiftUI
 /// as the Players tab.
 struct SquadSection: View {
     @EnvironmentObject private var teamStore: LinkedTeamStore
-    @StateObject private var lookups = TeamsAndFixturesStore()
+    @ObservedObject private var lookups = TeamsAndFixturesStore.shared
     /// The gameweek picked in the stepper; nil follows the latest squad. Profile
     /// owns it, so pull to refresh reloads the gameweek being viewed.
     @Binding var selected: Int?

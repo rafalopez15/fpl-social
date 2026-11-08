@@ -42,7 +42,7 @@ enum AppTab: CaseIterable, Identifiable {
 struct ContentView: View {
     @State private var selection: AppTab = .feed
     /// Shared so a note written from any tab is tagged with the current gameweek.
-    @StateObject private var gameweeks = GameweekStore()
+    @StateObject private var gameweeks = GameweekStore.shared
     /// The FPL team shown on Profile, shared for transfer notes.
     @StateObject private var linkedTeam = AppModels.linkedTeam
     @StateObject private var account = AppModels.account
@@ -51,6 +51,9 @@ struct ContentView: View {
     @Environment(\.scenePhase) private var scenePhase
     /// Measured tab bar height, passed to screens so lists scroll clear of it.
     @State private var tabBarHeight: CGFloat = 0
+    /// Set when the app goes to the background, so becoming active again refreshes.
+    /// Launch also becomes active, but the launch tasks already load everything.
+    @State private var wasInBackground = false
 
     var body: some View {
         ZStack {
@@ -72,7 +75,9 @@ struct ContentView: View {
         // ones on launch, when a team is linked, and on returning to the app.
         .task(id: linkedTeam.linked?.id) { await linkedTeam.checkForTransfers() }
         .onChange(of: scenePhase) { _, phase in
-            if phase == .active {
+            if phase == .background { wasInBackground = true }
+            if phase == .active, wasInBackground {
+                wasInBackground = false
                 Task { await noteSync.sync() }
                 Task { await teamSync.refresh() }
                 Task { await linkedTeam.checkForTransfers() }
@@ -137,7 +142,7 @@ private enum AppModels {
 
     static let noteSync = NoteSync(container: notes, account: account, defaults: LaunchOptions.userDefaults())
 
-    static let linkedTeam = LinkedTeamStore(defaults: LaunchOptions.userDefaults())
+    static let linkedTeam = LinkedTeamStore(defaults: LaunchOptions.userDefaults(), lookups: .shared)
     static let teamSync = TeamSync(account: account, linked: linkedTeam, defaults: LaunchOptions.userDefaults())
 }
 
