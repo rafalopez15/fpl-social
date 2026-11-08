@@ -28,7 +28,10 @@ jobs:
     - name: Key the build caches
       # Build products from another Xcode can't be reused, so its version and build
       # number (e.g. Xcode-26.1-17B55) are in the keys.
-      run: echo "XCODE_VERSION=$(xcodebuild -version | tr '\n' ' ' | sed 's/Build version //; s/ *$//; s/ /-/g')" >> "$GITHUB_ENV"
+      # ImageVersion is a runner variable, not in the env context, so copy it in.
+      run: |
+        echo "XCODE_VERSION=$(xcodebuild -version | tr '\n' ' ' | sed 's/Build version //; s/ *$//; s/ /-/g')" >> "$GITHUB_ENV"
+        echo "IMAGE_VERSION=$ImageVersion" >> "$GITHUB_ENV"
 
     - name: Restore the Swift packages
       # Cloned once per Package.resolved instead of on every run.
@@ -50,7 +53,7 @@ jobs:
           !DerivedData/Logs
         # The runner image too: an SDK or simulator update leaves a stale module cache
         # behind the same Xcode version, which fails builds.
-        key: deriveddata-${{ runner.os }}-${{ env.ImageVersion }}-${{ env.XCODE_VERSION }}-${{ hashFiles('FPL.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved') }}
+        key: deriveddata-${{ runner.os }}-${{ env.IMAGE_VERSION }}-${{ env.XCODE_VERSION }}-${{ hashFiles('FPL.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved') }}
 
     - name: Pick an iPhone simulator
       run: |
