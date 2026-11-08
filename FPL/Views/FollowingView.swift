@@ -205,9 +205,9 @@ struct FollowingView: View {
         .frame(minHeight: 44)
     }
 
-    /// Until its details load; the API never sends a manager's name.
+    /// "Team 123456" until a name is known, which is rare once the API names every team.
     private func name(of team: AccountTeam) -> String {
-        teamSync.managers[team.managerId]?.name ?? "Team \(String(team.managerId))"
+        teamSync.name(of: team) ?? "Team \(String(team.managerId))"
     }
 }
 

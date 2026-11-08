@@ -100,7 +100,12 @@ final class LinkedTeamStore: ObservableObject {
 
     /// Links a team the user has confirmed, replacing any linked before.
     func link(_ manager: Manager) {
-        let team = LinkedTeam(manager)
+        link(LinkedTeam(manager), manager: manager)
+    }
+
+    /// Links a team known by name, such as another of your teams switched to from the
+    /// account's list. `refresh()` loads the card's details if `manager` is nil.
+    func link(_ team: LinkedTeam, manager: Manager? = nil) {
         linked = team
         self.manager = manager
         do {

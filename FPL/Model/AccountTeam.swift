@@ -5,8 +5,7 @@
 
 import Foundation
 
-/// An FPL team on the signed-in account, from `GET /api/me/teams`. There's no
-/// team name: that comes from `/api/managers/{id}`.
+/// An FPL team on the signed-in account, from `GET /api/me/teams`.
 struct AccountTeam: Codable, Equatable, Identifiable {
     enum Relation: String, Codable {
         /// A team you run; people often run several.
@@ -18,6 +17,9 @@ struct AccountTeam: Codable, Equatable, Identifiable {
     let managerId: Int
     let relation: Relation
     let createdAt: Date
+    /// The team's name (never the manager's). Nil for teams added before the API sent it,
+    /// until its hourly sync fills them in, or from an API without the field.
+    var name: String?
 
     var id: Int { managerId }
 }
