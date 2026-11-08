@@ -329,22 +329,19 @@ struct AccountCard: View {
                 }
             case .signedIn(let email, _):
                 card {
+                    CardOptionsMenu(label: "Account options") {
+                        Button("Sign out", systemImage: "rectangle.portrait.and.arrow.right") {
+                            confirmingSignOut = true
+                        }
+                        Button("Delete account", systemImage: "trash", role: .destructive) {
+                            confirmingDelete = true
+                        }
+                    }
+                } content: {
                     Text("Signed in as \(email)")
                         .font(.subheadline)
                         .lineLimit(1)
                         .truncationMode(.middle)
-                    Button {
-                        confirmingSignOut = true
-                    } label: {
-                        Text("Sign out").frame(maxWidth: .infinity, minHeight: 32)
-                    }
-                    .buttonStyle(.bordered)
-                    Button(role: .destructive) {
-                        confirmingDelete = true
-                    } label: {
-                        Text("Delete account").frame(maxWidth: .infinity, minHeight: 32)
-                    }
-                    .buttonStyle(.bordered)
                     if let error = account.deleteError {
                         ErrorLine(message: error.message, isWarning: error.isWarning)
                     }
@@ -395,12 +392,21 @@ struct AccountCard: View {
     }
 
     private func card(@ViewBuilder content: () -> some View) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("ACCOUNT")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
-                .accessibilityAddTraits(.isHeader)
-            content()
+        card(options: { EmptyView() }, content: content)
+    }
+
+    /// `options` sits in the top-right corner, beside the header and content.
+    private func card(@ViewBuilder options: () -> some View, @ViewBuilder content: () -> some View) -> some View {
+        HStack(alignment: .top) {
+            VStack(alignment: .leading, spacing: 12) {
+                Text("ACCOUNT")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .accessibilityAddTraits(.isHeader)
+                content()
+            }
+            Spacer(minLength: 0)
+            options()
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
