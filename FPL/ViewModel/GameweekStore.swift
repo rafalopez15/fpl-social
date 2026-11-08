@@ -39,7 +39,7 @@ final class GameweekStore: ObservableObject {
         // With nothing to show, a retry shows the spinner again rather than the error.
         if events.isEmpty { didFail = false }
         guard let events = try? await client.events() else {
-            didFail = events.isEmpty
+            didFail = self.events.isEmpty
             return false
         }
         didFail = false

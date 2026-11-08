@@ -82,6 +82,26 @@ extension StubbedNetworkTests {
             #expect(await !store.refresh())
         }
 
+        @Test func failedLivePointsShowTheToast() async throws {
+            let (store, cleanup) = try store()
+            defer { cleanup() }
+            stubAll()
+            StubURLProtocol.responses["/api/events/9/live"] = (503, #"{"detail": "FPL is unavailable right now"}"#)
+            let toast = await ProfileRefresh.pull(gameweeks: GameweekStore(client: client), team: store, viewing: nil)
+            #expect(toast != nil)
+        }
+
+        @Test func failedPointsForAnEarlierGameweekShowTheToast() async throws {
+            let (store, cleanup) = try store()
+            defer { cleanup() }
+            stubAll()
+            await store.refresh()
+            StubURLProtocol.responses["/api/events/8/live"] = (503, #"{"detail": "FPL is unavailable right now"}"#)
+            #expect(await !store.loadSquad(gameweek: 8, reload: true))
+            let toast = await ProfileRefresh.pull(gameweeks: GameweekStore(client: client), team: store, viewing: 8)
+            #expect(toast != nil)
+        }
+
         @Test func aSquadThatIsntOutYetIsntAFailure() async throws {
             let (store, cleanup) = try store()
             defer { cleanup() }

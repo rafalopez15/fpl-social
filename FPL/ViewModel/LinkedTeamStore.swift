@@ -196,16 +196,21 @@ final class LinkedTeamStore: ObservableObject {
         } else if livePoints?.gameweek != gameweek {
             livePoints = nil
         }
-        return manager != nil && transfers != nil && history != nil && playersLoaded && Self.isAnswer(picks)
+        // No gameweek means no squad, which picks already reports.
+        let pointsLoaded = gameweek == nil || fetchedLive != nil
+        return manager != nil && transfers != nil && history != nil && playersLoaded && pointsLoaded
+            && Self.isAnswer(picks)
     }
 
     /// Pull to refresh: the team card and latest squad, and the earlier gameweek
     /// being viewed if it is one. Returns false if any of it failed.
     func refresh(viewing selected: Int?) async -> Bool {
-        let latest = await refresh()
-        guard let earlier = earlierGameweek(selected) else { return latest }
-        let earlierLoaded = await loadSquad(gameweek: earlier, reload: true)
-        return latest && earlierLoaded
+        // Known before refreshing, so both load at once.
+        guard let earlier = earlierGameweek(selected) else { return await refresh() }
+        async let latest = refresh()
+        async let earlierLoaded = loadSquad(gameweek: earlier, reload: true)
+        let (latestOK, earlierOK) = await (latest, earlierLoaded)
+        return latestOK && earlierOK
     }
 
     /// The stepper's pick if it's an earlier gameweek; nil means the latest squad.
@@ -262,7 +267,9 @@ final class LinkedTeamStore: ObservableObject {
             earlierPoints[gameweek] = LivePoints(gameweek: gameweek, elements: elements, fixtures: nil)
         }
         earlierSquads[gameweek] = SquadState(result, playersLoaded: playersLoaded, previous: previous)
-        return playersLoaded && Self.isAnswer(result)
+        // Points only count when there's a squad to show them on.
+        let pointsLoaded = elements != nil || (try? result.get()) == nil
+        return playersLoaded && pointsLoaded && Self.isAnswer(result)
     }
 
     /// Nil without a gameweek or if the live call fails. Fixtures failing only
