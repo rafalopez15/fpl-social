@@ -76,6 +76,33 @@ jobs:
       with:
         xcode-version: latest-stable
 
+    - name: Key the build caches
+      # Build products from another Xcode can't be reused, so its version and build
+      # number (e.g. Xcode-26.1-17B55) are in the keys.
+      run: echo "XCODE_VERSION=$(xcodebuild -version | tr '\n' ' ' | sed 's/Build version //; s/ *$//; s/ /-/g')" >> "$GITHUB_ENV"
+
+    - name: Restore the Swift packages
+      # Cloned once per Package.resolved instead of on every run.
+      uses: actions/cache@v4
+      with:
+        path: SourcePackages
+        key: spm-${{ runner.os }}-${{ hashFiles('FPL.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved') }}
+
+    - name: Restore the build products
+      # Mostly the packages' (supabase-swift, swift-crypto), which take minutes to
+      # compile and only change with Package.resolved. The app's own files still
+      # build each run: checkout gives them new timestamps.
+      uses: actions/cache@v4
+      with:
+        # Not the index or logs, which CI never reads.
+        path: |
+          DerivedData
+          !DerivedData/Index.noindex
+          !DerivedData/Logs
+        # The runner image too: an SDK or simulator update leaves a stale module cache
+        # behind the same Xcode version, which fails builds.
+        key: deriveddata-${{ runner.os }}-${{ env.ImageVersion }}-${{ env.XCODE_VERSION }}-${{ hashFiles('FPL.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved') }}
+
     - name: Pick an iPhone simulator
       run: |
         UDID=$(xcrun simctl list devices available --json \
@@ -101,6 +128,9 @@ jobs:
           -project FPL.xcodeproj \
           -scheme FPL \
           -destination "id=$SIMULATOR_UDID" \
+          -derivedDataPath DerivedData \
+          -clonedSourcePackagesDirPath SourcePackages \
+          COMPILER_INDEX_STORE_ENABLE=NO \
           -only-testing:FPLTests \
           -parallel-testing-enabled NO \
           -enableThreadSanitizer YES \
@@ -122,6 +152,9 @@ jobs:
           -project FPL.xcodeproj \
           -scheme FPL \
           -destination "id=$SIMULATOR_UDID" \
+          -derivedDataPath DerivedData \
+          -clonedSourcePackagesDirPath SourcePackages \
+          COMPILER_INDEX_STORE_ENABLE=NO \
           -only-testing:FPLUITests \
           -parallel-testing-enabled NO \
           -enableCodeCoverage NO \
@@ -146,6 +179,9 @@ jobs:
           -scheme FPL \
           -configuration Release \
           -destination "generic/platform=iOS Simulator" \
+          -derivedDataPath DerivedData \
+          -clonedSourcePackagesDirPath SourcePackages \
+          COMPILER_INDEX_STORE_ENABLE=NO \
           FPL_WARNINGS_AS_ERRORS=YES \
           CODE_SIGNING_ALLOWED=NO
 
