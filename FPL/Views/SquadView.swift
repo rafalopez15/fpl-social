@@ -12,15 +12,12 @@ import SwiftUI
 struct SquadSection: View {
     @EnvironmentObject private var teamStore: LinkedTeamStore
     @StateObject private var lookups = TeamsAndFixturesStore()
-    /// The gameweek picked in the stepper; nil follows the latest squad.
-    @State private var selected: Int?
+    /// The gameweek picked in the stepper; nil follows the latest squad. Profile
+    /// owns it, so pull to refresh reloads the gameweek being viewed.
+    @Binding var selected: Int?
 
     /// The earlier gameweek being shown, or nil for the latest squad.
-    private var earlier: Int? {
-        guard let selected, let range = teamStore.squadGameweeks,
-              range.contains(selected), selected < range.upperBound else { return nil }
-        return selected
-    }
+    private var earlier: Int? { teamStore.earlierGameweek(selected) }
 
     private var state: SquadState {
         earlier.map { teamStore.earlierSquads[$0] ?? .loading } ?? teamStore.squad
