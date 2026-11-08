@@ -156,7 +156,7 @@ private struct LinkedTeamCard: View {
 
                 Spacer()
 
-                Menu {
+                CardOptionsMenu(label: "Team options") {
                     if myTeams.count > 1 {
                         Section {
                             ForEach(myTeams, id: \.id) { other in
@@ -178,17 +178,7 @@ private struct LinkedTeamCard: View {
                         Button("Change team", systemImage: "arrow.left.arrow.right", action: onChange)
                     }
                     Button("Unlink team", systemImage: "minus.circle", role: .destructive, action: onUnlink)
-                } label: {
-                    Image(systemName: "ellipsis")
-                        .font(.body.weight(.semibold))
-                        .foregroundStyle(.secondary)
-                        .frame(width: 44, height: 44)
-                        .contentShape(Rectangle())
                 }
-                .accessibilityLabel("Team options")
-                // Pull the 44pt target into the card's padding so the icon lines up with the top-right corner.
-                .padding(.top, -12)
-                .padding(.trailing, -12)
             }
 
             Rectangle().fill(Theme.border).frame(height: 1).accessibilityHidden(true)
