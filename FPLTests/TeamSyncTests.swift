@@ -299,5 +299,16 @@ struct TeamSyncTests {
         #expect(TeamError(FPLAPIClient.APIError.http(status: 409, detail: "Team limit reached")).message
                 == "You can have up to 10 teams, including ones you follow.")
         #expect(TeamError(URLError(.notConnectedToInternet)) == .connection)
+        #expect(TeamError(FPLAPIClient.APIError.notFound("Manager not found")) == .notFound)
+        #expect(TeamError(FPLAPIClient.APIError.http(status: 422, detail: nil)) == .notFound)
+    }
+
+    @Test func eachAreaWaitsOnlyOnItsOwnChanges() async throws {
+        let (sync, _) = makeSync()
+        let manager = try Self.manager(9)
+        let following = Task { await sync.follow(manager) }
+        #expect(!sync.isWorking(in: .yourTeams))
+        _ = await following.value
+        #expect(!sync.isWorking(in: .following))
     }
 }

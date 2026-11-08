@@ -29,6 +29,8 @@ struct TeamRequest: Encodable {
 
 /// Why a change to the account's teams failed, worded for Profile.
 enum TeamError: Error, Equatable {
+    /// 404, or 422 for an ID too big for the API: FPL has no such team.
+    case notFound
     /// 409: ten teams, yours and followed ones together.
     case limitReached
     /// Following a team that's one of yours; the API would make it a followed team.
@@ -43,6 +45,7 @@ enum TeamError: Error, Equatable {
     init(_ error: Error) {
         switch error {
         case let error as TeamError: self = error
+        case FPLAPIClient.APIError.notFound, FPLAPIClient.APIError.http(status: 422, detail: _): self = .notFound
         case FPLAPIClient.APIError.http(status: 409, detail: _): self = .limitReached
         case FPLAPIClient.APIError.dataUnavailable: self = .fplUnavailable
         case SignInError.signedOut: self = .signedOut
@@ -53,6 +56,7 @@ enum TeamError: Error, Equatable {
 
     var message: String {
         switch self {
+        case .notFound: "No FPL team with that ID. Check the number and try again."
         case .limitReached: "You can have up to 10 teams, including ones you follow."
         case .alreadyYours: "That's one of your teams."
         case .fplUnavailable: "FPL is down or updating, which is common around gameweek deadlines. Try again in a few minutes."

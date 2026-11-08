@@ -52,7 +52,7 @@ struct ProfileView: View {
                         }
                     } else {
                         LinkTeamForm(purpose: isChanging ? (isSignedIn ? .add : .change) : .link,
-                                     error: teamSync.errors[.yourTeams], isWorking: teamSync.isWorking,
+                                     error: teamSync.errors[.yourTeams], isWorking: teamSync.isWorking(in: .yourTeams),
                                      onCancel: isChanging ? { isChanging = false; teamSync.clearError(in: .yourTeams) } : nil) { manager in
                             Task { if await teamSync.link(manager) { isChanging = false } }
                         }

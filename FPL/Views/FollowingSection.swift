@@ -76,7 +76,7 @@ struct FollowingSection: View {
                 Task { await teamSync.unfollow(team.managerId) }
             }
             .buttonStyle(.bordered)
-            .disabled(teamSync.isWorking)
+            .disabled(teamSync.isWorking(in: .following))
         }
         .frame(minHeight: 52)
     }
@@ -90,7 +90,7 @@ private struct FollowTeamSheet: View {
     var body: some View {
         NavigationStack {
             ScrollView {
-                LinkTeamForm(purpose: .follow, error: teamSync.errors[.following], isWorking: teamSync.isWorking,
+                LinkTeamForm(purpose: .follow, error: teamSync.errors[.following], isWorking: teamSync.isWorking(in: .following),
                              onCancel: { dismiss() },
                              onLink: { manager in Task { if await teamSync.follow(manager) { dismiss() } } })
                 .padding(16)

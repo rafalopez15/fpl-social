@@ -19,7 +19,10 @@ final class TeamSync: ObservableObject {
     enum Area { case yourTeams, following }
     /// The last change that failed in each area, shown until the next one there.
     @Published private(set) var errors: [Area: TeamError] = [:]
-    @Published private(set) var isWorking = false
+    /// Changes still running in each area, so one area's buttons wait only on their own.
+    @Published private(set) var running: [Area: Int] = [:]
+
+    func isWorking(in area: Area) -> Bool { (running[area] ?? 0) > 0 }
 
     private let account: AccountStore
     private let linked: LinkedTeamStore
@@ -248,8 +251,8 @@ final class TeamSync: ObservableObject {
     /// Runs an account request, setting `error` if it fails. Nil on failure.
     private func perform<T: Sendable>(in area: Area,
                                       _ call: @escaping @Sendable (any TeamsAPI, String) async throws -> T) async -> T? {
-        isWorking = true
-        defer { isWorking = false }
+        running[area, default: 0] += 1
+        defer { running[area, default: 1] -= 1 }
         errors[area] = nil
         do {
             return try await account.withAccessToken { [api] in try await call(api, $0) }
