@@ -225,9 +225,17 @@ struct FPLAPIClient: NotesAPI, TeamsAPI {
 
         let data: Data
         let response: URLResponse
+        var shared = false
         do {
-            (data, response) = try await session.data(for: request(path, method: method, query: query, body: body,
-                                                                     accessToken: accessToken))
+            let request = request(path, method: method, query: query, body: body, accessToken: accessToken)
+            // Stores that load the same list at the same moment (teams, events, fixtures at
+            // launch) share one request. Account routes carry a token and never share.
+            if method == "GET", request.value(forHTTPHeaderField: "Authorization") == nil {
+                let answer = try await InFlightRequests.shared.data(for: request, session: session)
+                (data, response, shared) = (answer.data, answer.response, answer.shared)
+            } else {
+                (data, response) = try await session.data(for: request)
+            }
         } catch {
             if (error as? URLError)?.code == .cancelled || error is CancellationError {
                 Logger.network.debug("\(route, privacy: .public) cancelled")
@@ -261,7 +269,8 @@ struct FPLAPIClient: NotesAPI, TeamsAPI {
             }
         }
 
-        Logger.network.debug("\(route, privacy: .public) \(http.statusCode), \(data.count) bytes")
+        // "shared": another caller's request, so it isn't counted as a request of its own.
+        Logger.network.debug("\(route, privacy: .public) \(http.statusCode), \(data.count) bytes\(shared ? " (shared)" : "")")
         return data
     }
 
@@ -270,5 +279,36 @@ struct FPLAPIClient: NotesAPI, TeamsAPI {
         path.replacingOccurrences(of: #"managers/\d+"#, with: "managers/{id}", options: .regularExpression)
             .replacingOccurrences(of: #"notes/[0-9a-fA-F-]{36}"#, with: "notes/{id}", options: .regularExpression)
             .replacingOccurrences(of: #"teams/\d+"#, with: "teams/{id}", options: .regularExpression)
+    }
+}
+
+/// Identical GET requests in flight at the same time share one network request.
+/// One made after the first finishes goes out again, so a refresh is always fresh.
+actor InFlightRequests {
+    static let shared = InFlightRequests()
+
+    private var running: [URL: Task<(Data, URLResponse), Error>] = [:]
+
+    struct Answer {
+        let data: Data
+        let response: URLResponse
+        /// True when another caller's request answered this one.
+        let shared: Bool
+    }
+
+    func data(for request: URLRequest, session: URLSession) async throws -> Answer {
+        guard let url = request.url else {
+            let (data, response) = try await session.data(for: request)
+            return Answer(data: data, response: response, shared: false)
+        }
+        if let task = running[url] {
+            let (data, response) = try await task.value
+            return Answer(data: data, response: response, shared: true)
+        }
+        let task = Task { try await session.data(for: request) }
+        running[url] = task
+        defer { running[url] = nil }
+        let (data, response) = try await task.value
+        return Answer(data: data, response: response, shared: false)
     }
 }
