@@ -139,10 +139,25 @@ final class TeamSync: ObservableObject {
         return true
     }
 
-    func unfollow(_ id: Int) async {
-        guard await perform(in: .following, { try await $0.deleteTeam(id: id, accessToken: $1) }) != nil else { return }
+    /// Returns whether it's unfollowed now.
+    @discardableResult
+    func unfollow(_ id: Int) async -> Bool {
+        guard await perform(in: .following, { try await $0.deleteTeam(id: id, accessToken: $1) }) != nil else { return false }
         teams.removeAll { $0.managerId == id }
         Logger.linkedTeam.notice("Unfollowed a team")
+        return true
+    }
+
+    /// Undo for an unfollow: follows the team again by its id. Its name is still known
+    /// from before. It comes back as the newest followed team.
+    @discardableResult
+    func refollow(_ id: Int) async -> Bool {
+        guard let team = await perform(in: .following, { try await $0.putTeam(id: id, relation: .following, accessToken: $1) })
+        else { return false }
+        teams.removeAll { $0.managerId == id }
+        teams.insert(team, at: 0)
+        Logger.linkedTeam.notice("Followed a team again")
+        return true
     }
 
     func clearError(in area: Area) {
