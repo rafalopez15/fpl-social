@@ -461,6 +461,17 @@ struct ManagerTests {
         #expect(manager.lastDeadlineValue == 1022)
     }
 
+    @Test func squadValueLeavesOutTheBank() throws {
+        // `response` has a total of 1022 and 21 in the bank.
+        #expect(try Self.manager().squadValue == 1001)
+        let noBank = try Self.manager(#"{"id": 2, "name": "New Team", "last_deadline_value": 1023}"#)
+        #expect(noBank.squadValue == 1023)
+        let noTotal = try Self.manager(#"{"id": 2, "name": "New Team", "last_deadline_bank": 5}"#)
+        #expect(noTotal.squadValue == nil)
+        let fromTicket = try Self.manager(#"{"id": 2, "name": "New Team", "last_deadline_value": 1023, "last_deadline_bank": 5}"#)
+        #expect(fromTicket.squadValue == 1018)
+    }
+
     @Test func optionalFieldsCanBeNullOrMissing() throws {
         let manager = try Self.manager("""
         {"id": 2, "name": "New Team", "current_event": null}
