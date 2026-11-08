@@ -106,13 +106,8 @@ final class LinkedTeamStore: ObservableObject {
     /// Links a team known by name, such as another of your teams switched to from the
     /// account's list. `refresh()` loads the card's details if `manager` is nil.
     func link(_ team: LinkedTeam, manager: Manager? = nil) {
-        linked = team
+        save(team)
         self.manager = manager
-        do {
-            defaults.set(try JSONEncoder().encode(team), forKey: Self.key)
-        } catch {
-            Logger.linkedTeam.fault("Couldn't save the linked team: \(error.logSummary, privacy: .public)")
-        }
         Logger.linkedTeam.notice("Linked team \(team.id, privacy: .private)")
         // Only transfers made from now on get a prompt; the season so far doesn't.
         // A team linked before, such as one switched back to, keeps its time.
@@ -203,7 +198,11 @@ final class LinkedTeamStore: ObservableObject {
         async let squadResult = fetchPicks(managerID: id)
         let (manager, transfers, history, picks) = await (fresh, season, gameweeks, squadResult)
         guard linked?.id == id else { return true }
-        if let manager { self.manager = manager }
+        if let manager {
+            self.manager = manager
+            // A name from the account's list can be a day old, and teams get renamed.
+            if manager.name != linked?.teamName { save(LinkedTeam(manager)) }
+        }
         if let history { self.history = history }
         if let history, let transfers {
             freeTransfers = FreeTransfers.available(history: history, upcoming: transfers)
@@ -411,5 +410,16 @@ struct NamedTransfer: Identifiable, Hashable {
             outCost: transfer.elementOutCost,
             time: transfer.time
         )
+    }
+}
+
+private extension LinkedTeamStore {
+    func save(_ team: LinkedTeam) {
+        linked = team
+        do {
+            defaults.set(try JSONEncoder().encode(team), forKey: Self.key)
+        } catch {
+            Logger.linkedTeam.fault("Couldn't save the linked team: \(error.logSummary, privacy: .public)")
+        }
     }
 }

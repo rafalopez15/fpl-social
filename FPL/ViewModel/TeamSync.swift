@@ -130,7 +130,7 @@ final class TeamSync: ObservableObject {
         teams.removeAll { $0.managerId == id }
         teamToAdd = nil
         if let next = mine.first?.managerId {
-            // Its details may not have loaded; the account still has it either way.
+            // Its name may not be known yet; the account still has it either way.
             if linkedTeam(id: next) == nil { await loadManagers([next]) }
             if let team = linkedTeam(id: next) {
                 linked.link(team, manager: managers[next])
