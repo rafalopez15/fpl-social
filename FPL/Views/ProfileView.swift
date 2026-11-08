@@ -13,6 +13,12 @@ struct ProfileView: View {
     @EnvironmentObject private var teamStore: LinkedTeamStore
     @EnvironmentObject private var teamSync: TeamSync
     @EnvironmentObject private var account: AccountStore
+    @EnvironmentObject private var gameweeks: GameweekStore
+    /// The squad stepper's gameweek; nil follows the latest squad.
+    @State private var squadGameweek: Int?
+    /// "Refresh failed", after a pull to refresh that failed.
+    @State private var toast: Toast?
+    @State private var isRefreshing = false
     /// True while picking a different team (signed out) or adding one (signed in);
     /// the current one stays until a new one is confirmed.
     @State private var isChanging = false
@@ -24,6 +30,14 @@ struct ProfileView: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
+                    // With the navigation bar hidden, iOS doesn't draw the refresh spinner
+                    // (and closes its gap once Profile redraws), so show one here.
+                    if isRefreshing {
+                        ProgressView()
+                            .tint(Theme.secondaryText)
+                            .frame(maxWidth: .infinity)
+                            .accessibilityLabel("Refreshing")
+                    }
                     if let linked = teamStore.linked, !isChanging {
                         LinkedTeamCard(team: linked, manager: teamStore.manager,
                                        freeTransfers: teamStore.freeTransfers,
@@ -42,7 +56,7 @@ struct ProfileView: View {
 
                         FollowingSection()
 
-                        SquadSection()
+                        SquadSection(selected: $squadGameweek)
 
                         TransfersSection(managerID: linked.id,
                                          history: teamStore.transferHistory,
@@ -64,7 +78,16 @@ struct ProfileView: View {
                 }
                 .padding(16)
             }
+            .refreshable {
+                isRefreshing = true
+                // SwiftUI cancels this action's task when Profile redraws mid-refresh, which the
+                // stores' updates cause; a task of its own keeps the requests and the spinner going.
+                let pull = Task { await ProfileRefresh.pull(gameweeks: gameweeks, team: teamStore, viewing: squadGameweek) }
+                toast = await pull.value
+                isRefreshing = false
+            }
             .themedScreen()
+            .toast($toast)
             // Like Notes: the tab bar says where you are, so no title bar.
             .navigationTitle("Profile")
             .toolbar(.hidden, for: .navigationBar)
@@ -78,7 +101,26 @@ struct ProfileView: View {
             .task(id: teamStore.linked?.id) {
                 await teamStore.refresh()
             }
+            // A different team starts again from its latest squad. Here rather than in
+            // SquadSection, which isn't on screen while another team is picked.
+            .onChange(of: teamStore.linked?.id) { squadGameweek = nil }
         }
+    }
+}
+
+/// Profile's pull to refresh. Refreshing on returning to the app doesn't go
+/// through here, so it never shows the toast.
+@MainActor
+enum ProfileRefresh {
+    static let failedMessage = "Refresh failed. Try again later."
+
+    /// Reloads the gameweeks, and with a team linked, the team card and the squad
+    /// being viewed. A toast if any of it failed; what's shown stays either way.
+    static func pull(gameweeks: GameweekStore, team: LinkedTeamStore, viewing gameweek: Int?) async -> Toast? {
+        async let gameweeksLoaded = gameweeks.reload()
+        async let teamLoaded = team.refresh(viewing: gameweek)
+        let (gameweeksOK, teamOK) = await (gameweeksLoaded, teamLoaded)
+        return gameweeksOK && teamOK ? nil : Toast(message: failedMessage)
     }
 }
 
@@ -336,6 +378,7 @@ private struct TransferGameweekCard: View {
         // No sign-in in previews: they can't reach a preview API, so the card stays hidden.
         .environmentObject(AccountStore(auth: nil))
         .environmentObject(TeamSync.preview)
+        .environmentObject(GameweekStore())
         .environmentObject(NoteSync.preview)
         .modelContainer(NoteSync.preview.container)
 }
