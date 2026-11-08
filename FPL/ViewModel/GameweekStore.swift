@@ -26,15 +26,26 @@ final class GameweekStore: ObservableObject {
 
     func loadIfNeeded() async {
         guard current == nil, !isLoading else { return }
+        await reload()
+    }
+
+    /// Loads the gameweeks even if they've loaded, so the current gameweek and
+    /// deadlines move on when the app stays open across a deadline. A failure keeps
+    /// what's loaded. Returns false if it failed.
+    @discardableResult
+    func reload() async -> Bool {
         isLoading = true
         defer { isLoading = false }
-        didFail = false
+        // With nothing to show, a retry shows the spinner again rather than the error.
+        if events.isEmpty { didFail = false }
         guard let events = try? await client.events() else {
-            didFail = true
-            return
+            didFail = events.isEmpty
+            return false
         }
+        didFail = false
         self.events = events
         current = Event.currentGameweek(in: events)
+        return true
     }
 
     /// The gameweek's transfer deadline, if gameweeks have loaded.

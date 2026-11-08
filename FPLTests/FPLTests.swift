@@ -1067,7 +1067,7 @@ extension StubbedNetworkTests {
             StubURLProtocol.delay = 0.5
 
             // Stepping past gameweek 8 before it loads cancels its task.
-            let load = Task { await store.loadSquad(gameweek: 8) }
+            let load = Task { _ = await store.loadSquad(gameweek: 8) }
             try await Task.sleep(for: .milliseconds(50))
             load.cancel()
             await load.value
