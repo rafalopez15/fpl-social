@@ -43,10 +43,11 @@ struct ContentView: View {
     @State private var selection: AppTab = .feed
     /// Shared so a note written from any tab is tagged with the current gameweek.
     @StateObject private var gameweeks = GameweekStore()
-    /// The FPL team linked on this device (Profile tab), shared for transfer notes.
-    @StateObject private var linkedTeam = LinkedTeamStore(defaults: LaunchOptions.userDefaults())
+    /// The FPL team shown on Profile, shared for transfer notes.
+    @StateObject private var linkedTeam = AppModels.linkedTeam
     @StateObject private var account = AppModels.account
     @StateObject private var noteSync = AppModels.noteSync
+    @StateObject private var teamSync = AppModels.teamSync
     @Environment(\.scenePhase) private var scenePhase
     /// Measured tab bar height, passed to screens so lists scroll clear of it.
     @State private var tabBarHeight: CGFloat = 0
@@ -73,6 +74,7 @@ struct ContentView: View {
         .onChange(of: scenePhase) { _, phase in
             if phase == .active {
                 Task { await noteSync.sync() }
+                Task { await teamSync.refresh() }
                 Task { await linkedTeam.checkForTransfers() }
                 // Points and rank move during a gameweek; Notes' headers show them.
                 Task { await linkedTeam.refresh() }
@@ -90,8 +92,10 @@ struct ContentView: View {
         .task { await account.observeSession() }
         .task { await noteSync.sync() }
         .task { await noteSync.syncWhenOnline() }
+        .task { await teamSync.refresh() }
         // Outermost, so sheets presented from here get them too.
         .environmentObject(noteSync)
+        .environmentObject(teamSync)
         .modelContainer(AppModels.notes)
     }
 
@@ -107,7 +111,8 @@ struct ContentView: View {
 }
 
 /// Made once per launch, since SwiftUI can create `ContentView` more than once
-/// and `NoteSync` needs the same account and container the views use.
+/// and `NoteSync` and `TeamSync` need the same account, container and team store
+/// the views use.
 @MainActor
 private enum AppModels {
     // UI tests run signed out, whatever session the simulator's keychain holds.
@@ -131,6 +136,9 @@ private enum AppModels {
     }()
 
     static let noteSync = NoteSync(container: notes, account: account, defaults: LaunchOptions.userDefaults())
+
+    static let linkedTeam = LinkedTeamStore(defaults: LaunchOptions.userDefaults())
+    static let teamSync = TeamSync(account: account, linked: linkedTeam, defaults: LaunchOptions.userDefaults())
 }
 
 /// Tab bar: a rounded card with a solid green pill behind the selected tab.

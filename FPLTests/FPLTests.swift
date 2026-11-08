@@ -499,6 +499,8 @@ struct ManagerTests {
 
     @Test func lookupErrorsMapToMessages() {
         #expect(LinkError(FPLAPIClient.APIError.notFound("Manager not found")) == .notFound)
+        // The field takes 10 digits, more than the API's largest id.
+        #expect(LinkError(FPLAPIClient.APIError.http(status: 422, detail: nil)) == .notFound)
         #expect(LinkError(FPLAPIClient.APIError.dataUnavailable("FPL is unavailable right now")) == .fplUnavailable)
         #expect(LinkError(URLError(.notConnectedToInternet)) == .other)
         #expect(!LinkError.notFound.canRetry)
@@ -723,11 +725,27 @@ struct TransferTests {
 
         let before = Date.now
         LinkedTeamStore(defaults: defaults).link(try ManagerTests.manager())
-        let seen = try #require(defaults.object(forKey: "transfersSeenUntil") as? Date)
+        let seen = try #require(LinkedTeamStore(defaults: defaults).transfersSeenUntil(for: 1))
         #expect(seen >= before)
 
         LinkedTeamStore(defaults: defaults).unlink()
-        #expect(defaults.object(forKey: "transfersSeenUntil") == nil)
+        #expect(LinkedTeamStore(defaults: defaults).transfersSeenUntil(for: 1) == nil)
+    }
+
+    @MainActor @Test func switchingBackKeepsATeamsSeenTime() throws {
+        let suite = "FPLTests.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let store = LinkedTeamStore(defaults: defaults)
+        store.link(try TeamSyncTests.manager(1))
+        let first = try #require(store.transfersSeenUntil(for: 1))
+
+        store.link(try TeamSyncTests.manager(2))
+        store.link(try TeamSyncTests.manager(1))
+
+        // Transfers team 1 made while team 2 was shown still get the prompt.
+        #expect(store.transfersSeenUntil(for: 1) == first)
+        #expect(store.transfersSeenUntil(for: 2) != nil)
     }
 }
 

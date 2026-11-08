@@ -22,11 +22,15 @@ final class AccountStore: ObservableObject {
     }
 
     @Published private(set) var state: State {
-        didSet { if state != oldValue { onStateChange?(oldValue, state) } }
+        didSet { if state != oldValue { stateObservers.forEach { $0(oldValue, state) } } }
     }
-    /// Runs as the state changes, before views update, so `NoteSync` has the
-    /// account's notes ready by the time a screen shows the new state.
-    var onStateChange: ((_ old: State, _ new: State) -> Void)?
+    private var stateObservers: [(_ old: State, _ new: State) -> Void] = []
+
+    /// Runs `observer` as the state changes, before views update, so `NoteSync`
+    /// and `TeamSync` have the account's data ready when a screen shows the new state.
+    func onStateChange(_ observer: @escaping (_ old: State, _ new: State) -> Void) {
+        stateObservers.append(observer)
+    }
     /// Set when a session ended on its own (not from Sign out), shown until the next sign-in.
     @Published private(set) var signedOutReason: SignInError?
     /// Set once the account is deleted, shown until the next sign-in.

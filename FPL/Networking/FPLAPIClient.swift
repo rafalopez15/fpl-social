@@ -12,8 +12,17 @@ protocol NotesAPI: Sendable {
     func putNote(_ note: NoteBody, id: UUID, accessToken: String) async throws -> RemoteNote
 }
 
+/// The account's teams and the team lookup, a protocol so `TeamSync` tests can
+/// stand in for the server.
+protocol TeamsAPI: Sendable {
+    func myTeams(accessToken: String) async throws -> [AccountTeam]
+    func putTeam(id: Int, relation: AccountTeam.Relation, accessToken: String) async throws -> AccountTeam
+    func deleteTeam(id: Int, accessToken: String) async throws
+    func manager(id: Int) async throws -> Manager
+}
+
 /// Client for the fplAPI backend, all routes under `/api`.
-struct FPLAPIClient: NotesAPI {
+struct FPLAPIClient: NotesAPI, TeamsAPI {
     /// From the `FPL_API_BASE_URL` build setting (via `FPLAPIBaseURL` in Info.plist),
     /// or in Debug the `-FPLAPIBaseURL` launch argument. A local backend is `http://127.0.0.1:5000/api`.
     var baseURL: URL = Self.configuredBaseURL
@@ -130,6 +139,23 @@ struct FPLAPIClient: NotesAPI {
         _ = try await data("DELETE", "me", accessToken: accessToken)
     }
 
+    /// `GET /api/me/teams`: the account's FPL teams, newest first.
+    func myTeams(accessToken: String) async throws -> [AccountTeam] {
+        try await get("me/teams", accessToken: accessToken)
+    }
+
+    /// `PUT /api/me/teams/{id}`: adds a team or switches its relation. 404 for a team
+    /// FPL doesn't have, 409 at the account's 10 teams, 503 when FPL is down.
+    func putTeam(id: Int, relation: AccountTeam.Relation, accessToken: String) async throws -> AccountTeam {
+        try await send("PUT", "me/teams/\(id)", body: JSONEncoder.fplAPI.encode(TeamRequest(relation: relation)),
+                       accessToken: accessToken)
+    }
+
+    /// `DELETE /api/me/teams/{id}`: 204, also when it wasn't on the account.
+    func deleteTeam(id: Int, accessToken: String) async throws {
+        _ = try await data("DELETE", "me/teams/\(id)", accessToken: accessToken)
+    }
+
     /// `GET /api/me/notes?since={cursor}`: the signed-in user's notes changed since
     /// the cursor, oldest first, deletions included. 422 for a cursor it didn't issue.
     func notes(since cursor: String?, accessToken: String) async throws -> NotesPage {
@@ -243,5 +269,6 @@ struct FPLAPIClient: NotesAPI {
     static func route(_ path: String) -> String {
         path.replacingOccurrences(of: #"managers/\d+"#, with: "managers/{id}", options: .regularExpression)
             .replacingOccurrences(of: #"notes/[0-9a-fA-F-]{36}"#, with: "notes/{id}", options: .regularExpression)
+            .replacingOccurrences(of: #"teams/\d+"#, with: "teams/{id}", options: .regularExpression)
     }
 }

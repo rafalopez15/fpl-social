@@ -7,12 +7,18 @@ import SwiftData
 import SwiftUI
 
 /// The Profile tab: link your FPL team by manager ID, then see it with options
-/// to change or unlink it. The Account card under it signs you in or out.
+/// to change or unlink it. The Account card under it signs you in or out, and
+/// signed in, Following lists the teams you follow.
 struct ProfileView: View {
     @EnvironmentObject private var teamStore: LinkedTeamStore
-    /// True while picking a different team; the current link stays until a new one is confirmed.
+    @EnvironmentObject private var teamSync: TeamSync
+    @EnvironmentObject private var account: AccountStore
+    /// True while picking a different team (signed out) or adding one (signed in);
+    /// the current one stays until a new one is confirmed.
     @State private var isChanging = false
     @State private var confirmingUnlink = false
+
+    private var isSignedIn: Bool { account.userID != nil }
 
     var body: some View {
         NavigationStack {
@@ -20,13 +26,21 @@ struct ProfileView: View {
                 VStack(alignment: .leading, spacing: 16) {
                     if let linked = teamStore.linked, !isChanging {
                         LinkedTeamCard(team: linked, manager: teamStore.manager,
-                                       freeTransfers: teamStore.freeTransfers) {
+                                       freeTransfers: teamStore.freeTransfers,
+                                       myTeams: isSignedIn ? teamSync.myTeams : [], isSignedIn: isSignedIn) {
                             isChanging = true
+                        } onShow: { id in
+                            teamSync.show(id)
                         } onUnlink: {
                             confirmingUnlink = true
                         }
+                        if let error = teamSync.errors[.yourTeams] {
+                            ErrorLine(error: error)
+                        }
 
                         AccountCard()
+
+                        FollowingSection()
 
                         SquadSection()
 
@@ -37,12 +51,15 @@ struct ProfileView: View {
                             Task { await teamStore.refresh() }
                         }
                     } else {
-                        LinkTeamForm(onCancel: isChanging ? { isChanging = false } : nil) { manager in
-                            teamStore.link(manager)
-                            isChanging = false
+                        LinkTeamForm(purpose: isChanging ? (isSignedIn ? .add : .change) : .link,
+                                     error: teamSync.errors[.yourTeams], isWorking: teamSync.isWorking(in: .yourTeams),
+                                     onCancel: isChanging ? { isChanging = false; teamSync.clearError(in: .yourTeams) } : nil) { manager in
+                            Task { if await teamSync.link(manager) { isChanging = false } }
                         }
 
                         AccountCard()
+
+                        FollowingSection()
                     }
                 }
                 .padding(16)
@@ -53,9 +70,10 @@ struct ProfileView: View {
             .toolbar(.hidden, for: .navigationBar)
             .confirmationDialog("Unlink \(teamStore.linked?.teamName ?? "team")?",
                                 isPresented: $confirmingUnlink, titleVisibility: .visible) {
-                Button("Unlink team", role: .destructive) { teamStore.unlink() }
+                Button("Unlink team", role: .destructive) { Task { await teamSync.unlink() } }
             } message: {
-                Text("You can link it again any time with its manager ID.")
+                Text(isSignedIn ? "It's removed from your account. You can add it again any time with its manager ID."
+                                : "You can link it again any time with its manager ID.")
             }
             .task(id: teamStore.linked?.id) {
                 await teamStore.refresh()
@@ -71,7 +89,12 @@ private struct LinkedTeamCard: View {
     let manager: Manager?
     /// Free transfers for the next deadline; nil until worked out.
     let freeTransfers: Int?
+    /// Signed in, your teams on the account, to switch between.
+    let myTeams: [LinkedTeam]
+    let isSignedIn: Bool
+    /// Signed out, picks a different team; signed in, adds another.
     let onChange: () -> Void
+    let onShow: (Int) -> Void
     let onUnlink: () -> Void
 
     var body: some View {
@@ -92,7 +115,26 @@ private struct LinkedTeamCard: View {
                 Spacer()
 
                 Menu {
-                    Button("Change team", systemImage: "arrow.left.arrow.right", action: onChange)
+                    if myTeams.count > 1 {
+                        Section {
+                            ForEach(myTeams, id: \.id) { other in
+                                Button {
+                                    onShow(other.id)
+                                } label: {
+                                    if other.id == team.id {
+                                        Label(other.teamName, systemImage: "checkmark")
+                                    } else {
+                                        Text(other.teamName)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    if isSignedIn {
+                        Button("Add another team", systemImage: "plus", action: onChange)
+                    } else {
+                        Button("Change team", systemImage: "arrow.left.arrow.right", action: onChange)
+                    }
                     Button("Unlink team", systemImage: "minus.circle", role: .destructive, action: onUnlink)
                 } label: {
                     Image(systemName: "ellipsis")
@@ -288,158 +330,12 @@ private struct TransferGameweekCard: View {
     }
 }
 
-/// Enter a manager ID, look the team up, and confirm it's yours.
-private struct LinkTeamForm: View {
-    /// Shown as a Cancel button when changing an existing link.
-    let onCancel: (() -> Void)?
-    let onLink: (Manager) -> Void
-
-    @StateObject private var model = LinkTeamModel()
-    @FocusState private var isFieldFocused: Bool
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            VStack(alignment: .leading, spacing: 6) {
-                Text(onCancel == nil ? "Link your FPL team" : "Change team")
-                    .font(.title2.weight(.bold))
-                    .accessibilityAddTraits(.isHeader)
-                Text("The app reads your transfers so it can ask why you made them. You don't need to sign in.")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-            }
-
-            VStack(alignment: .leading, spacing: 8) {
-                TextField("Manager ID", text: $model.idText)
-                    .keyboardType(.numberPad)
-                    .autocorrectionDisabled()
-                    .font(.title3.monospacedDigit())
-                    .focused($isFieldFocused)
-                    .padding(12)
-                    .background(Theme.surface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                    .overlay {
-                        RoundedRectangle(cornerRadius: 12, style: .continuous)
-                            .strokeBorder(isError ? Theme.danger : Theme.border)
-                    }
-                    .accessibilityHint("Digits only")
-
-                if case .failed(let error) = model.state {
-                    HStack(alignment: .firstTextBaseline, spacing: 6) {
-                        Image(systemName: "exclamationmark.circle.fill")
-                            .accessibilityHidden(true)
-                        Text(error.message)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                    .font(.footnote)
-                    .foregroundStyle(error == .notFound ? Theme.danger : Theme.warning)
-                } else {
-                    Text("""
-                        On the FPL website, open your team's Points page. Your ID is the number after \
-                        /entry/ in the address, e.g. fantasy.premierleague.com/entry/**1234567**/event/9.
-                        """)
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-            }
-
-            if case .found(let manager) = model.state {
-                ConfirmTeamCard(manager: manager) {
-                    onLink(manager)
-                } onReject: {
-                    model.reject()
-                    isFieldFocused = true
-                }
-            } else {
-                Button {
-                    isFieldFocused = false
-                    Task { await model.lookUp() }
-                } label: {
-                    Group {
-                        if model.state == .loading {
-                            ProgressView().tint(Theme.onAccent)
-                        } else {
-                            Text(buttonTitle)
-                        }
-                    }
-                    .frame(maxWidth: .infinity, minHeight: 32)
-                }
-                .buttonStyle(.borderedProminent)
-                .disabled(model.managerID == nil || model.state == .loading)
-            }
-
-            if let onCancel {
-                Button("Cancel", action: onCancel)
-                    .frame(maxWidth: .infinity)
-            }
-        }
-    }
-
-    private var isError: Bool {
-        if case .failed = model.state { return true }
-        return false
-    }
-
-    /// "Try again" after a failure that retrying could fix.
-    private var buttonTitle: String {
-        if case .failed(let error) = model.state, error.canRetry { return "Try again" }
-        return "Find team"
-    }
-}
-
-/// "Is this your team?" with the team name, points and rank, before saving the link.
-private struct ConfirmTeamCard: View {
-    let manager: Manager
-    let onConfirm: () -> Void
-    let onReject: () -> Void
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text("IS THIS YOUR TEAM?")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                Text(manager.name)
-                    .font(.title3.weight(.bold))
-                Text(details)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-            }
-            .accessibilityElement(children: .combine)
-
-            HStack(spacing: 8) {
-                Button(action: onReject) {
-                    Text("Not my team").frame(maxWidth: .infinity, minHeight: 32)
-                }
-                .buttonStyle(.bordered)
-
-                Button(action: onConfirm) {
-                    Text("Link team").frame(maxWidth: .infinity, minHeight: 32)
-                }
-                .buttonStyle(.borderedProminent)
-            }
-        }
-        .padding(16)
-        .background(Theme.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .strokeBorder(Theme.accent.opacity(0.6))
-        }
-    }
-
-    /// e.g. "563 pts · Rank 1,571,477", or "ID 1" for a team with neither yet.
-    private var details: String {
-        var parts: [String] = []
-        if let points = manager.summaryOverallPoints { parts.append("\(points.formatted()) pts") }
-        if let rank = manager.summaryOverallRank { parts.append("Rank \(rank.formatted())") }
-        return parts.isEmpty ? "ID \(String(manager.id))" : parts.joined(separator: " · ")
-    }
-}
-
 #Preview {
     ProfileView()
         .environmentObject(LinkedTeamStore())
         // No sign-in in previews: they can't reach a preview API, so the card stays hidden.
         .environmentObject(AccountStore(auth: nil))
+        .environmentObject(TeamSync.preview)
         .environmentObject(NoteSync.preview)
         .modelContainer(NoteSync.preview.container)
 }
