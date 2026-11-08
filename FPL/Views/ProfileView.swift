@@ -54,7 +54,7 @@ struct ProfileView: View {
 
                         AccountCard()
 
-                        FollowingSection()
+                        FollowingCard()
 
                         SquadSection(selected: $squadGameweek)
 
@@ -73,7 +73,7 @@ struct ProfileView: View {
 
                         AccountCard()
 
-                        FollowingSection()
+                        FollowingCard()
                     }
                 }
                 .padding(16)

@@ -195,6 +195,19 @@ struct TeamSyncTests {
         #expect(api.state.deletes == [9])
     }
 
+    @Test func undoingAnUnfollowFollowsAgain() async throws {
+        let (sync, _) = makeSync()
+        #expect(await sync.follow(try Self.manager(9)))
+        #expect(await sync.unfollow(9))
+        #expect(sync.following.isEmpty)
+
+        #expect(await sync.refollow(9))
+        #expect(sync.following.map(\.managerId) == [9])
+        #expect(api.state.puts.map(\.relation) == [.following, .following])
+        // The name is still known for the list.
+        #expect(sync.managers[9]?.name == "Club 9")
+    }
+
     @Test func yourOwnTeamCantBeFollowed() async throws {
         api.update { $0.teams = [FakeTeamsAPI.team(5)] }
         let (sync, _) = makeSync()
@@ -312,5 +325,14 @@ struct TeamSyncTests {
         #expect(!sync.isWorking(in: .yourTeams))
         _ = await following.value
         #expect(!sync.isWorking(in: .following))
+    }
+}
+
+struct FollowingCardTests {
+    @Test func countsTeamsInWords() {
+        #expect(FollowingCard.summary(count: 0) == "No teams yet")
+        #expect(FollowingCard.summary(count: 1) == "1 team")
+        #expect(FollowingCard.summary(count: 3) == "3 teams")
+        #expect(FollowingCard.summary(count: 1000) == "1,000 teams")
     }
 }
