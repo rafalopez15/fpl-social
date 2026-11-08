@@ -116,9 +116,9 @@ FPL/
     AuthService.swift           AuthService protocol and SupabaseAuthService (email codes, session, SignInError mapping)
   ViewModel/
     ElementViewModel.swift      @MainActor ObservableObject: loading, search, sort, teams
-    GameweekStore.swift         Gameweeks and the current one, shared via environment (note tags, deadlines); reload() for pull to refresh
+    GameweekStore.swift         Gameweeks and the current one, one shared copy (.shared), via environment (note tags, deadlines); reload() for pull to refresh
     LinkedTeamStore.swift       The linked FPL team, saved in UserDefaults, shared via environment; SquadState
-    TeamsAndFixturesStore.swift Teams and upcoming fixtures for screens outside the Players tab (Profile's squad)
+    TeamsAndFixturesStore.swift Teams and upcoming fixtures, one shared copy (.shared) for the Players tab, Profile's squad and live points
     LinkTeamModel.swift         Link flow: digits-only ID, lookup, confirm; LinkError messages
     AccountStore.swift          Signed in or out, shared via environment; withAccessToken; SignInModel for the sheet
     NoteSync.swift              Syncs the account's notes: outbox, pull with cursor, newer-wins apply, upload offer
@@ -151,6 +151,7 @@ FPLTests/FPLTests.swift         Swift Testing: decoding, sort, store and logging
 FPLTests/AccountTests.swift     The /me request builder, 401 refresh and sign-out, and the sign-in sheet's model
 FPLTests/NoteSyncTests.swift    Notes JSON, and NoteSync against FakeNotesAPI: outbox, conflicts, paging, offer, sign-out
 FPLTests/TeamSyncTests.swift    TeamSync against FakeTeamsAPI: first sign-in, showing your team, add, switch, unlink, follow, sign-out
+FPLTests/RequestCountTests.swift    How many requests reach the network when parts of the app ask for the same data at once
 FPLTests/ProfileRefreshTests.swift  Profile's pull to refresh against stubbed responses: the toast, earlier gameweeks, gameweeks reloading
 FPLTests/ContractTests.swift    Decodes FPLTests/Fixtures/*.json, saved production responses, one per endpoint
 FPLUITests/FPLUITests.swift     UI tests: link a team, view the squad, write a note
@@ -158,6 +159,14 @@ FPLUITests/FixtureServer.swift  Local HTTP server serving the fixtures to the ap
 ```
 
 Data flow: `PlayersView` owns an `ElementViewModel` (`@StateObject`). `.task(id: viewModel.position)` calls `fetchElements()` on appear and on every position change. The view model fetches players and, until they've loaded, teams and the fixture schedule in parallel. Teams or fixtures failing only hides team names or the popover's fixtures, and they're retried on the next fetch. `filteredElements` applies search and the sort on every read; lists are small (under 300 players per position), so nothing is cached.
+
+**Requests at launch** (FPL-94). Launch used to make about 46 API calls, several lists two to four times (`elements`, 555 KB, twice). Now each goes out once (about 30, most of them one `managers/{id}` per team on the account), which `RequestCountTests` checks against stubbed responses:
+- `ContentView`'s "became active" refresh (notes, teams, the linked team, the transfer check) skips a return under 10 seconds after the last one (`lastActiveRefresh`, starting at launch). SwiftUI also reports active right after launch, when the launch tasks already load everything; any later return refreshes, including from Control Center or a call, which only make the app inactive.
+- `FPLAPIClient` shares identical requests in flight at the same moment (`InFlightRequests`), per session, for the lists that duplicated at launch only: `teams`, `events`, `fixtures` and `elements` (`sharedPaths`). A shared request isn't cancelled with its caller, so other routes don't share and cancel as before. A request made after the first finished goes out again, so refreshes stay fresh. A caller answered by another's request logs `(shared)`, so count log lines without those.
+- `LinkedTeamStore.refresh()` and its players load run one at a time per team: a second call waits for the running one. Transfers fetched in the last 10 seconds are reused (the transfer check and Profile's refresh both want them at launch; the server caches them for 60).
+- `TeamsAndFixturesStore.shared` serves the Players tab (which reads it directly), Profile's squad and live points; its fixtures are reused for 10 seconds, then fetched again since matches start. `GameweekStore.shared` gives it the gameweeks, one load at a time (a pull during the launch load waits for it).
+- `TeamSync` reuses the linked team's details from `LinkedTeamStore` rather than fetching them again.
+- To count on a simulator, persist the app's debug logs (`xcrun simctl spawn booted log config --mode "level:debug,persist:debug" --subsystem rafael.lopez.FPL`), launch, and count `GET` lines in the `network` category without `(shared)`.
 
 ## Logging
 

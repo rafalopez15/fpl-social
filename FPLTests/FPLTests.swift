@@ -880,6 +880,10 @@ struct PicksTests {
 final class StubURLProtocol: URLProtocol, @unchecked Sendable {
     nonisolated(unsafe) static var responses: [String: (status: Int, body: String)] = [:]
     nonisolated(unsafe) static var delay: TimeInterval = 0
+    /// Requests that reached the network, by path. Reset with `resetRequests()`.
+    private static let requested = OSAllocatedUnfairLock(initialState: [String: Int]())
+    static var requests: [String: Int] { requested.withLock { $0 } }
+    static func resetRequests() { requested.withLock { $0 = [:] } }
 
     static var session: URLSession {
         let configuration = URLSessionConfiguration.ephemeral
@@ -894,6 +898,7 @@ final class StubURLProtocol: URLProtocol, @unchecked Sendable {
     override static func canonicalRequest(for request: URLRequest) -> URLRequest { request }
 
     override func startLoading() {
+        if let path = request.url?.path { Self.requested.withLock { $0[path, default: 0] += 1 } }
         DispatchQueue.global().asyncAfter(deadline: .now() + Self.delay) { [self] in
             guard !stopped.withLock({ $0 }), let url = request.url else { return }
             let stub = Self.responses[url.path] ?? (404, #"{"detail": "Not found"}"#)

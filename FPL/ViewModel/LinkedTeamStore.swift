@@ -38,18 +38,39 @@ final class LinkedTeamStore: ObservableObject {
 
     private let defaults: UserDefaults
     private let client: FPLAPIClient
+    private let lookups: TeamsAndFixturesStore
     private static let key = "linkedTeam"
     /// Per team id: transfers made before this time have been prompted for, or
     /// predate the team's first link. Per team, so switching between teams keeps each one's.
     private static let seenKey = "transfersSeenUntilByTeam"
     private var isChecking = false
+    /// The refresh running now and its team, which a second call for the same team
+    /// waits for instead of starting another.
+    private var runningRefresh: (teamID: Int, task: Task<Bool, Never>)?
+    /// The same for loading players, which refresh and the transfer check both do.
+    private var runningPlayersLoad: Task<Bool, Never>?
+    /// The last transfers fetched, reused for 10 seconds: at launch the transfer check
+    /// and Profile's refresh both want them, a moment apart. The server caches them for 60.
+    private var recentTransfers: RecentTransfers?
+    /// The transfers fetch running now, shared until it has saved its result.
+    private var runningTransfers: (teamID: Int, task: Task<[Transfer], Error>)?
+
+    private struct RecentTransfers {
+        let teamID: Int
+        let fetchedAt: Date
+        let transfers: [Transfer]
+    }
     /// The season so far: points and rank per gameweek for the Notes tab, and
     /// transfers per gameweek for `freeTransfers`. Nil until loaded.
     @Published private(set) var history: ManagerHistory?
 
-    init(defaults: UserDefaults = .standard, client: FPLAPIClient = FPLAPIClient()) {
+    /// - Parameter lookups: Where live points get fixtures. The app passes the shared
+    ///   one; nil makes a store of its own on `client`, as tests want.
+    init(defaults: UserDefaults = .standard, client: FPLAPIClient = FPLAPIClient(),
+         lookups: TeamsAndFixturesStore? = nil) {
         self.defaults = defaults
         self.client = client
+        self.lookups = lookups ?? TeamsAndFixturesStore(client: client, gameweeks: GameweekStore(client: client))
         if let data = defaults.data(forKey: Self.key) {
             do {
                 linked = try JSONDecoder().decode(LinkedTeam.self, from: data)
@@ -128,7 +149,7 @@ final class LinkedTeamStore: ObservableObject {
         isChecking = true
         defer { isChecking = false }
 
-        guard let transfers = try? await client.transfers(managerID: id) else { return }
+        guard let transfers = try? await transfers(managerID: id) else { return }
         let new = Transfer.made(after: seenUntil, in: transfers)
         guard !new.isEmpty else { return }
         guard !Transfer.hasUnmarkedChurn(new) else {
@@ -159,10 +180,20 @@ final class LinkedTeamStore: ObservableObject {
     @discardableResult
     func refresh() async -> Bool {
         guard let id = linked?.id else { return true }
+        if let runningRefresh, runningRefresh.teamID == id { return await runningRefresh.task.value }
+        let refresh = Task { await refreshOnce() }
+        runningRefresh = (id, refresh)
+        let result = await refresh.value
+        if runningRefresh?.task == refresh { runningRefresh = nil }
+        return result
+    }
+
+    private func refreshOnce() async -> Bool {
+        guard let id = linked?.id else { return true }
         // A retry after a failure shows the placeholder again while it loads.
         if squad == .failed { squad = .loading }
         async let fresh = try? client.manager(id: id)
-        async let season = try? client.transfers(managerID: id)
+        async let season = try? transfers(managerID: id)
         async let gameweeks = try? client.history(managerID: id)
         async let squadResult = fetchPicks(managerID: id)
         let (manager, transfers, history, picks) = await (fresh, season, gameweeks, squadResult)
@@ -277,9 +308,9 @@ final class LinkedTeamStore: ObservableObject {
     private func fetchLivePoints(gameweek: Int?) async -> LivePoints? {
         guard let gameweek else { return nil }
         async let elements = client.livePoints(gameweek: gameweek)
-        async let fixtures = client.upcomingFixtures()
+        async let fixtures = lookups.upcomingFixtures()
         guard let elements = try? await elements else { return nil }
-        return LivePoints(gameweek: gameweek, elements: elements, fixtures: try? await fixtures)
+        return LivePoints(gameweek: gameweek, elements: elements, fixtures: await fixtures)
     }
 
     private func fetchPicks(managerID: Int, gameweek: Int? = nil) async -> Result<ManagerPicks, Error> {
@@ -288,13 +319,34 @@ final class LinkedTeamStore: ObservableObject {
 
     private var names: [Int: String] { players.mapValues(\.webName) }
 
+    private func transfers(managerID id: Int) async throws -> [Transfer] {
+        if let recentTransfers, recentTransfers.teamID == id, recentTransfers.fetchedAt.timeIntervalSinceNow > -10 {
+            return recentTransfers.transfers
+        }
+        if let runningTransfers, runningTransfers.teamID == id { return try await runningTransfers.task.value }
+        let fetch = Task { [client] in
+            let transfers = try await client.transfers(managerID: id)
+            recentTransfers = RecentTransfers(teamID: id, fetchedAt: .now, transfers: transfers)
+            return transfers
+        }
+        runningTransfers = (id, fetch)
+        defer { if runningTransfers?.task == fetch { runningTransfers = nil } }
+        return try await fetch.value
+    }
+
     /// Loads players from `/elements` unless every id is already known.
     /// Returns false if they couldn't be loaded.
     private func loadPlayers(_ ids: [Int]) async -> Bool {
         if ids.allSatisfy({ players[$0] != nil }) { return true }
-        guard let elements = try? await client.elements() else { return false }
-        players = Dictionary(elements.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
-        return true
+        if let runningPlayersLoad { return await runningPlayersLoad.value }
+        let load = Task { () -> Bool in
+            guard let elements = try? await client.elements() else { return false }
+            players = Dictionary(elements.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+            return true
+        }
+        runningPlayersLoad = load
+        defer { runningPlayersLoad = nil }
+        return await load.value
     }
 }
 
