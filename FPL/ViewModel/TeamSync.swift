@@ -19,6 +19,11 @@ final class TeamSync: ObservableObject {
     enum Area { case yourTeams, following }
     /// The last change that failed in each area, shown until the next one there.
     @Published private(set) var errors: [Area: TeamError] = [:]
+    /// Whether the account's teams have loaded since signing in. Until they have, an
+    /// empty list doesn't mean you follow none.
+    @Published private(set) var hasLoaded = false
+    /// True when the last load failed before any had worked.
+    @Published private(set) var loadFailed = false
     /// Changes still running in each area, so one area's buttons wait only on their own.
     @Published private(set) var running: [Area: Int] = [:]
 
@@ -128,21 +133,38 @@ final class TeamSync: ObservableObject {
     /// API would turn it into a followed team. The one on Profile counts even if
     /// the account's teams didn't load.
     func follow(_ manager: Manager) async -> Bool {
-        guard !mine.contains(where: { $0.managerId == manager.id }), manager.id != linked.linked?.id else {
-            errors[.following] = .alreadyYours
-            return false
-        }
-        guard let team = await perform(in: .following, { try await $0.putTeam(id: manager.id, relation: .following, accessToken: $1) })
-        else { return false }
-        save(team, manager)
-        Logger.linkedTeam.notice("Followed a team")
+        await follow(id: manager.id, manager: manager)
+    }
+
+    /// Returns whether it's unfollowed now.
+    @discardableResult
+    func unfollow(_ id: Int) async -> Bool {
+        guard await perform(in: .following, { try await $0.deleteTeam(id: id, accessToken: $1) }) != nil else { return false }
+        teams.removeAll { $0.managerId == id }
+        Logger.linkedTeam.notice("Unfollowed a team")
         return true
     }
 
-    func unfollow(_ id: Int) async {
-        guard await perform(in: .following, { try await $0.deleteTeam(id: id, accessToken: $1) }) != nil else { return }
+    /// Undo for an unfollow: follows the team again by its id. Its name is still known
+    /// from before. It comes back as the newest followed team.
+    @discardableResult
+    func refollow(_ id: Int) async -> Bool {
+        await follow(id: id, manager: managers[id])
+    }
+
+    /// Follow and Undo both come here, so both refuse one of your own teams.
+    private func follow(id: Int, manager: Manager?) async -> Bool {
+        guard !mine.contains(where: { $0.managerId == id }), id != linked.linked?.id else {
+            errors[.following] = .alreadyYours
+            return false
+        }
+        guard let team = await perform(in: .following, { try await $0.putTeam(id: id, relation: .following, accessToken: $1) })
+        else { return false }
         teams.removeAll { $0.managerId == id }
-        Logger.linkedTeam.notice("Unfollowed a team")
+        teams.insert(team, at: 0)
+        if let manager { managers[id] = manager }
+        Logger.linkedTeam.notice("Followed a team")
+        return true
     }
 
     func clearError(in area: Area) {
@@ -162,6 +184,8 @@ final class TeamSync: ObservableObject {
             teams = []
             managers = [:]
             errors = [:]
+            hasLoaded = false
+            loadFailed = false
             teamToAdd = nil
             if old != .unavailable, linked.linked != nil { defaults.set(true, forKey: Self.fromAccountKey) }
         }
@@ -187,10 +211,13 @@ final class TeamSync: ObservableObject {
             teams = try await account.withAccessToken { [api] in try await api.myTeams(accessToken: $0) }
         } catch {
             Logger.linkedTeam.notice("Couldn't load the account's teams: \(error.logSummary, privacy: .public)")
+            if !hasLoaded { loadFailed = true }
             return
         }
         guard account.userID != nil else { return }
         self.teams = teams
+        hasLoaded = true
+        loadFailed = false
         await addTeamToAdd()
         await loadManagers(self.teams.map(\.managerId))
         guard account.userID != nil else { return }

@@ -177,7 +177,8 @@ private struct SyncInvitation: View {
     }
 }
 
-/// A bar confirming a delete, with an Undo button. Also used by `PlayerNotesView`.
+/// A bar confirming a delete or an unfollow, with an Undo button. Used by the Notes
+/// tab, `PlayerNotesView` and the Following page.
 struct UndoToast: View {
     let message: String
     let onUndo: () -> Void
