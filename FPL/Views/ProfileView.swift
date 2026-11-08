@@ -158,7 +158,7 @@ private struct LinkedTeamCard: View {
             }
 
             HStack(alignment: .top) {
-                stat("Team value", money(manager?.lastDeadlineValue))
+                stat("Squad value", money(manager?.squadValue))
                 stat("In the bank", money(manager?.lastDeadlineBank))
                 stat("Free transfers", freeTransfers)
             }
