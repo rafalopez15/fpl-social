@@ -264,32 +264,6 @@ private struct FieldStyle: ViewModifier {
     }
 }
 
-private struct ErrorLine: View {
-    let message: String
-    /// Yellow for what's on our side, red for what you can fix.
-    let isWarning: Bool
-
-    init(message: String, isWarning: Bool) {
-        self.message = message
-        self.isWarning = isWarning
-    }
-
-    init(error: SignInError) {
-        self.init(message: error.message, isWarning: error == .connection || error == .unavailable)
-    }
-
-    var body: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 6) {
-            Image(systemName: "exclamationmark.circle.fill")
-                .accessibilityHidden(true)
-            Text(message)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-        .font(.footnote)
-        .foregroundStyle(isWarning ? Theme.warning : Theme.danger)
-    }
-}
-
 private struct ButtonLabel: View {
     let title: String
     let isWorking: Bool

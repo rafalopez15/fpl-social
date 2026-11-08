@@ -35,7 +35,7 @@ struct ProfileView: View {
                             confirmingUnlink = true
                         }
                         if let error = teamSync.errors[.yourTeams] {
-                            TeamErrorLine(error: error)
+                            ErrorLine(error: error)
                         }
 
                         AccountCard()

@@ -78,16 +78,9 @@ struct LinkTeamForm: View {
                     .accessibilityHint("Digits only")
 
                 if case .failed(let error) = model.state {
-                    HStack(alignment: .firstTextBaseline, spacing: 6) {
-                        Image(systemName: "exclamationmark.circle.fill")
-                            .accessibilityHidden(true)
-                        Text(error.message)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                    .font(.footnote)
-                    .foregroundStyle(error == .notFound ? Theme.danger : Theme.warning)
+                    ErrorLine(error: error)
                 } else if let error {
-                    TeamErrorLine(error: error)
+                    ErrorLine(error: error)
                 } else {
                     Text("""
                         On the FPL website, open your team's Points page. Your ID is the number after \

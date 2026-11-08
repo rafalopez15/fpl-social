@@ -52,7 +52,7 @@ struct FollowingSection: View {
                 .background(Theme.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
 
                 if let error = teamSync.errors[.following], !isFollowing {
-                    TeamErrorLine(error: error)
+                    ErrorLine(error: error)
                         .padding(.horizontal, 4)
                 }
             }
@@ -100,21 +100,5 @@ private struct FollowTeamSheet: View {
             .navigationBarTitleDisplayMode(.inline)
         }
         .presentationBackground(Theme.background)
-    }
-}
-
-/// A failed team change: yellow for what's on our side or the connection's, red for the rest.
-struct TeamErrorLine: View {
-    let error: TeamError
-
-    var body: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 6) {
-            Image(systemName: "exclamationmark.circle.fill")
-                .accessibilityHidden(true)
-            Text(error.message)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-        .font(.footnote)
-        .foregroundStyle(error == .fplUnavailable || error == .connection ? Theme.warning : Theme.danger)
     }
 }
