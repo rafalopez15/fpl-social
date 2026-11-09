@@ -55,9 +55,22 @@ final class TeamSync: ObservableObject {
     var mine: [AccountTeam] { teams.filter { $0.relation == .mine } }
     var following: [AccountTeam] { teams.filter { $0.relation == .following } }
 
-    /// Your teams with names loaded, for the team card's switcher.
+    /// Your teams with names known, for the team card's switcher.
     var myTeams: [LinkedTeam] {
-        mine.compactMap { managers[$0.managerId].map(LinkedTeam.init) }
+        mine.compactMap { linkedTeam(for: $0) }
+    }
+
+    /// From the account's list, or for a team the API hasn't named yet, its details.
+    func name(of team: AccountTeam) -> String? {
+        team.name ?? managers[team.managerId]?.name
+    }
+
+    private func linkedTeam(for team: AccountTeam) -> LinkedTeam? {
+        name(of: team).map { LinkedTeam(id: team.managerId, teamName: $0) }
+    }
+
+    private func linkedTeam(id: Int) -> LinkedTeam? {
+        teams.first { $0.managerId == id }.flatMap(linkedTeam(for:))
     }
 
     func isFollowing(_ id: Int) -> Bool {
@@ -100,9 +113,9 @@ final class TeamSync: ObservableObject {
 
     /// Shows another of your teams on Profile.
     func show(_ id: Int) {
-        guard let manager = managers[id], linked.linked?.id != id else { return }
+        guard linked.linked?.id != id, let team = linkedTeam(id: id) else { return }
         teamToAdd = nil
-        linked.link(manager)
+        linked.link(team, manager: managers[id])
     }
 
     /// Unlinks the team on Profile. Signed in, it leaves the account and the next
@@ -117,10 +130,10 @@ final class TeamSync: ObservableObject {
         teams.removeAll { $0.managerId == id }
         teamToAdd = nil
         if let next = mine.first?.managerId {
-            // Its details may not have loaded; the account still has it either way.
-            if managers[next] == nil { await loadManagers([next]) }
-            if let manager = managers[next] {
-                linked.link(manager)
+            // Its name may not be known yet; the account still has it either way.
+            if linkedTeam(id: next) == nil { await loadManagers([next]) }
+            if let team = linkedTeam(id: next) {
+                linked.link(team, manager: managers[next])
                 Logger.linkedTeam.notice("Removed a team from the account")
                 return
             }
@@ -219,7 +232,8 @@ final class TeamSync: ObservableObject {
         hasLoaded = true
         loadFailed = false
         await addTeamToAdd()
-        await loadManagers(self.teams.map(\.managerId))
+        // Names come with the list; only teams the API hasn't named yet need a lookup.
+        await loadManagers(self.teams.filter { $0.name == nil }.map(\.managerId))
         guard account.userID != nil else { return }
 
         // A team still waiting to join stays shown; so does any while the transfer
@@ -227,8 +241,8 @@ final class TeamSync: ObservableObject {
         let current = linked.linked?.id
         if linked.pendingTransfers.isEmpty, current == nil || current != teamToAdd,
            !mine.contains(where: { $0.managerId == current }),
-           let newest = mine.first, let manager = managers[newest.managerId] {
-            linked.link(manager)
+           let newest = mine.first, let team = linkedTeam(for: newest) {
+            linked.link(team, manager: managers[newest.managerId])
         }
     }
 
@@ -254,22 +268,29 @@ final class TeamSync: ObservableObject {
         }
     }
 
-    /// Team names come from `/api/managers/{id}`, cached at the CDN. A team that
-    /// fails to load is left out of lists until the next refresh.
+    /// Details from `/api/managers/{id}`, for teams the API hasn't named yet (or the
+    /// one Profile already loaded). At most 4 at a time, so a long list never sends a
+    /// burst; most would miss the CDN cache and reach FPL. A team that fails to load
+    /// is left out until the next refresh.
     private func loadManagers(_ ids: [Int]) async {
-        // The team on Profile has usually just loaded there.
         if let shown = linked.manager, ids.contains(shown.id), managers[shown.id] == nil { managers[shown.id] = shown }
-        let missing = ids.filter { managers[$0] == nil }
+        var missing = ids.filter { managers[$0] == nil }[...]
         guard !missing.isEmpty else { return }
         await withTaskGroup(of: Manager?.self) { [api] group in
-            for id in missing {
+            for _ in 0..<Self.maxLookups {
+                guard let id = missing.popFirst() else { break }
                 group.addTask { try? await api.manager(id: id) }
             }
             for await manager in group {
                 if let manager { managers[manager.id] = manager }
+                if let id = missing.popFirst() {
+                    group.addTask { try? await api.manager(id: id) }
+                }
             }
         }
     }
+
+    static let maxLookups = 4
 
     private func save(_ team: AccountTeam, _ manager: Manager) {
         teams.removeAll { $0.managerId == team.managerId }

@@ -58,6 +58,19 @@ extension StubbedNetworkTests {
             #expect(store.squad == .loaded(try PicksTests.picks()))
         }
 
+        @Test func aRefreshSavesTheTeamsCurrentName() async throws {
+            let suite = "FPLTests.\(UUID().uuidString)"
+            let defaults = try #require(UserDefaults(suiteName: suite))
+            defer { defaults.removePersistentDomain(forName: suite) }
+            let store = LinkedTeamStore(defaults: defaults, client: client)
+            store.link(LinkedTeam(id: 1, teamName: "Old Name"))
+            stubAll()
+
+            #expect(await store.refresh())
+            #expect(store.linked == LinkedTeam(id: 1, teamName: "Solio Moose"))
+            #expect(LinkedTeamStore(defaults: defaults, client: client).linked?.teamName == "Solio Moose")
+        }
+
         @Test func aFailedPullKeepsWhatsShownAndShowsTheToast() async throws {
             let (store, cleanup) = try store()
             defer { cleanup() }

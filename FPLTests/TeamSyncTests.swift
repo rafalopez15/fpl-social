@@ -22,6 +22,10 @@ final class FakeTeamsAPI: TeamsAPI, @unchecked Sendable {
         var failingManagers: Set<Int> = []
         /// Thrown by `myTeams`, as when offline.
         var listError: Error?
+        /// Lookups of a team's details, and the most running at once.
+        var managerCalls = 0
+        var running = 0
+        var mostRunning = 0
     }
 
     private let lock = OSAllocatedUnfairLock(initialState: State())
@@ -56,12 +60,17 @@ final class FakeTeamsAPI: TeamsAPI, @unchecked Sendable {
     }
 
     func manager(id: Int) async throws -> Manager {
+        update { $0.managerCalls += 1; $0.running += 1; $0.mostRunning = max($0.mostRunning, $0.running) }
+        defer { update { $0.running -= 1 } }
+        // Long enough for lookups started together to overlap.
+        try? await Task.sleep(for: .milliseconds(5))
         if state.failingManagers.contains(id) { throw FPLAPIClient.APIError.dataUnavailable("FPL is unavailable") }
         return try TeamSyncTests.manager(id)
     }
 
-    static func team(_ id: Int, _ relation: AccountTeam.Relation = .mine) -> AccountTeam {
-        AccountTeam(managerId: id, relation: relation, createdAt: .now)
+    /// Unnamed by default, as before the API's sync names a team.
+    static func team(_ id: Int, _ relation: AccountTeam.Relation = .mine, name: String? = nil) -> AccountTeam {
+        AccountTeam(managerId: id, relation: relation, createdAt: .now, name: name)
     }
 }
 
@@ -366,5 +375,70 @@ struct FollowingCardTests {
         #expect(FollowingCard.status(count: 0, loaded: false, failed: false) == "Loading…")
         #expect(FollowingCard.status(count: 0, loaded: false, failed: true) == "Couldn't load your teams")
         #expect(FollowingCard.status(count: 0, loaded: true, failed: false) == "No teams yet")
+    }
+}
+
+/// Names from `/api/me/teams`, and lookups for the teams it hasn't named.
+@MainActor
+struct TeamNameTests {
+    let base: TeamSyncTests
+
+    init() throws {
+        base = try TeamSyncTests()
+    }
+
+    @Test func decodesTheTeamNameWhenTheAPISendsOne() throws {
+        let json = #"""
+        [{"manager_id": 1, "relation": "mine", "created_at": "2026-11-07T10:00:00.123456Z", "name": "Fantasy FC"},
+         {"manager_id": 2, "relation": "following", "created_at": "2026-11-07T10:00:00Z", "name": null},
+         {"manager_id": 3, "relation": "following", "created_at": "2026-11-07T10:00:00Z"}]
+        """#
+        let teams = try JSONDecoder.fplAPI.decode([AccountTeam].self, from: Data(json.utf8))
+        #expect(teams.map(\.name) == ["Fantasy FC", nil, nil])
+    }
+
+    @Test func namedTeamsNeedNoLookups() async throws {
+        base.api.update {
+            $0.teams = [FakeTeamsAPI.team(5, name: "Five FC"), FakeTeamsAPI.team(3, name: "Three FC"),
+                        FakeTeamsAPI.team(9, .following, name: "Nine FC")]
+        }
+        let (sync, _) = base.makeSync()
+        await sync.refresh()
+
+        #expect(base.api.state.managerCalls == 0)
+        #expect(sync.myTeams.map(\.teamName) == ["Five FC", "Three FC"])
+        #expect(base.linked.linked == LinkedTeam(id: 5, teamName: "Five FC"))
+        #expect(sync.name(of: sync.following[0]) == "Nine FC")
+    }
+
+    @Test func onlyUnnamedTeamsAreLookedUp() async throws {
+        base.api.update { $0.teams = [FakeTeamsAPI.team(5, name: "Five FC"), FakeTeamsAPI.team(9, .following)] }
+        let (sync, _) = base.makeSync()
+        await sync.refresh()
+
+        #expect(base.api.state.managerCalls == 1)
+        #expect(sync.name(of: sync.following[0]) == "Club 9")
+    }
+
+    @Test func atMostFourLookupsRunAtOnce() async throws {
+        base.api.update { $0.teams = (1...12).map { FakeTeamsAPI.team(100 + $0, .following) } }
+        let (sync, _) = base.makeSync()
+        await sync.refresh()
+
+        #expect(base.api.state.managerCalls == 12)
+        #expect(base.api.state.mostRunning == TeamSync.maxLookups)
+        #expect(sync.following.allSatisfy { sync.name(of: $0) != nil })
+    }
+
+    @Test func switchingToANamedTeamNeedsNoDetails() async throws {
+        base.api.update {
+            $0.teams = [FakeTeamsAPI.team(5, name: "Five FC"), FakeTeamsAPI.team(3, name: "Three FC")]
+            $0.failingManagers = [3]
+        }
+        let (sync, _) = base.makeSync()
+        await sync.refresh()
+
+        sync.show(3)
+        #expect(base.linked.linked == LinkedTeam(id: 3, teamName: "Three FC"))
     }
 }
