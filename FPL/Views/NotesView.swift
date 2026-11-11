@@ -117,7 +117,10 @@ struct NotesView: View {
                     GameweekHeader(section: section,
                                    currentGameweek: gameweeks.current,
                                    deadline: section.gameweek.flatMap(gameweeks.deadline(for:)),
-                                   score: section.gameweek.flatMap { linkedTeam.history?.score(for: $0) }) { gameweek in
+                                   score: section.gameweek.flatMap {
+                                       GameweekScore.score(for: $0, history: linkedTeam.history,
+                                                           squad: linkedTeam.gameweekPoints(events: gameweeks.events))
+                                   }) { gameweek in
                         editor = EditorTarget(gameweek: gameweek)
                     }
                     .themedRow()
@@ -309,6 +312,7 @@ private struct ScoreColumn: View {
     var body: some View {
         VStack(alignment: .trailing, spacing: 2) {
             HStack(spacing: 4) {
+                if score.isLive { LiveTag() }
                 if score.hitCost > 0 {
                     Text("−\(score.hitCost)")
                         .font(.caption.weight(.semibold))
@@ -347,7 +351,8 @@ extension GameweekScore {
     var accessibilityDescription: String {
         var parts: [String] = []
         if let points {
-            parts.append(hitCost > 0 ? "\(points) points, minus \(hitCost) for transfers" : "\(points) points")
+            let points = isLive ? "\(points) points, live" : "\(points) points"
+            parts.append(hitCost > 0 ? "\(points), minus \(hitCost) for transfers" : points)
         }
         if let overallRank {
             var rank = "Overall rank \(overallRank.formatted())"

@@ -32,8 +32,11 @@ final class FixtureServer: @unchecked Sendable {
 
     private let listener: NWListener
     private let queue = DispatchQueue(label: "FixtureServer")
+    /// Bodies served in place of a fixture file, by fixture name.
+    private let overrides: [String: Data]
 
-    init() throws {
+    init(overrides: [String: Data] = [:]) throws {
+        self.overrides = overrides
         let parameters = NWParameters.tcp
         // Loopback only: nothing off this Mac needs to reach it.
         parameters.requiredLocalEndpoint = .hostPort(host: .ipv4(.loopback), port: .any)
@@ -63,12 +66,12 @@ final class FixtureServer: @unchecked Sendable {
 
     private func serve(_ connection: NWConnection) {
         connection.start(queue: queue)
-        connection.receive(minimumIncompleteLength: 1, maximumLength: 64 * 1024) { data, _, _, _ in
+        connection.receive(minimumIncompleteLength: 1, maximumLength: 64 * 1024) { [weak self] data, _, _, _ in
             // "GET /api/teams?x=1 HTTP/1.1": the path, without the query.
             let requestLine = data.flatMap { String(data: $0, encoding: .utf8) }?.split(separator: " ")
             let target = requestLine.map { $0.count > 1 ? String($0[1]) : "/" } ?? "/"
             let path = String(target.split(separator: "?").first ?? "")
-            let (status, body) = Self.response(for: path)
+            let (status, body) = self?.response(for: path) ?? (404, Data())
             let head = """
                 HTTP/1.1 \(status) \(status == 200 ? "OK" : "Not Found")\r
                 Content-Type: application/json\r
@@ -83,10 +86,11 @@ final class FixtureServer: @unchecked Sendable {
         }
     }
 
-    private static func response(for path: String) -> (status: Int, body: Data) {
-        let route = routes.first { path.range(of: $0.pattern, options: .regularExpression) != nil }
+    private func response(for path: String) -> (status: Int, body: Data) {
+        let route = Self.routes.first { path.range(of: $0.pattern, options: .regularExpression) != nil }
         guard let route,
-              let body = try? Data(contentsOf: fixtures.appendingPathComponent("\(route.fixture).json")) else {
+              let body = overrides[route.fixture]
+                ?? (try? Data(contentsOf: Self.fixtures.appendingPathComponent("\(route.fixture).json"))) else {
             return (404, Data(#"{"detail": "Not found"}"#.utf8))
         }
         return (200, body)

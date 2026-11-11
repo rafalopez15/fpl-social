@@ -40,6 +40,7 @@ struct ProfileView: View {
                     }
                     if let linked = teamStore.linked, !isChanging {
                         LinkedTeamCard(team: linked, manager: teamStore.manager,
+                                       gameweekPoints: teamStore.gameweekPoints(events: gameweeks.events),
                                        freeTransfers: teamStore.freeTransfers,
                                        myTeams: isSignedIn ? teamSync.myTeams : [], isSignedIn: isSignedIn) {
                             isChanging = true
@@ -162,6 +163,9 @@ private struct LinkedTeamCard: View {
     let team: LinkedTeam
     /// Latest details; nil until refreshed, in which case stats show "–".
     let manager: Manager?
+    /// The latest squad's gameweek points, so this card and the squad's agree.
+    /// Nil until the squad loads, and the manager's own numbers show.
+    let gameweekPoints: GameweekPoints?
     /// Free transfers for the next deadline; nil until worked out.
     let freeTransfers: Int?
     /// Signed in, your teams on the account, to switch between.
@@ -219,7 +223,9 @@ private struct LinkedTeamCard: View {
             HStack(alignment: .top) {
                 stat("Points", manager?.summaryOverallPoints)
                 stat("Overall rank", manager?.summaryOverallRank)
-                stat(manager?.currentEvent.map { "GW\($0) points" } ?? "Gameweek", manager?.summaryEventPoints)
+                stat((gameweekPoints?.gameweek ?? manager?.currentEvent).map { "GW\($0) points" } ?? "Gameweek",
+                     (gameweekPoints?.points ?? manager?.summaryEventPoints)?.formatted(),
+                     isLive: gameweekPoints?.isLive == true)
             }
 
             HStack(alignment: .top) {
@@ -242,11 +248,14 @@ private struct LinkedTeamCard: View {
         tenths.map { String(format: "£%.1fm", Double($0) / 10) }
     }
 
-    private func stat(_ label: String, _ value: String?) -> some View {
+    private func stat(_ label: String, _ value: String?, isLive: Bool = false) -> some View {
         VStack(alignment: .leading, spacing: 2) {
-            Text(value ?? "–")
-                .font(.headline)
-                .monospacedDigit()
+            HStack(spacing: 6) {
+                Text(value ?? "–")
+                    .font(.headline)
+                    .monospacedDigit()
+                if isLive { LiveTag() }
+            }
             Text(label)
                 .font(.caption)
                 .foregroundStyle(.secondary)

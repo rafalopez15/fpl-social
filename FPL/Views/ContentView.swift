@@ -84,6 +84,8 @@ struct ContentView: View {
                 Task { await linkedTeam.checkForTransfers() }
                 // Points and rank move during a gameweek; Notes' headers show them.
                 Task { await linkedTeam.refresh() }
+                // FPL confirming the gameweek ends its live points.
+                Task { await gameweeks.reload() }
             }
         }
         .sheet(isPresented: Binding(
