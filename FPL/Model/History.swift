@@ -38,13 +38,28 @@ struct GameweekHistory: Decodable {
 
 /// A gameweek's result for a gameweek header.
 struct GameweekScore: Equatable {
-    let points: Int?
+    var points: Int?
+    /// `points` is the live sum, not FPL's.
+    var isLive = false
     /// Points lost to hits, 0 when none.
     let hitCost: Int
     let overallRank: Int?
     /// Places gained since the gameweek before (positive is up). Nil for the
     /// first gameweek or when a rank is missing.
     let rankChange: Int?
+}
+
+extension GameweekScore {
+    /// The history's score for `gameweek`, with the squad's live points in place
+    /// of FPL's while that gameweek is live, so Notes matches Profile.
+    static func score(for gameweek: Int, history: ManagerHistory?, squad: GameweekPoints?) -> GameweekScore? {
+        let score = history?.score(for: gameweek)
+        guard let squad, squad.isLive, squad.gameweek == gameweek else { return score }
+        var live = score ?? GameweekScore(points: nil, hitCost: 0, overallRank: nil, rankChange: nil)
+        live.points = squad.points
+        live.isLive = true
+        return live
+    }
 }
 
 private func both(_ a: Int?, _ b: Int?) -> (Int, Int)? {

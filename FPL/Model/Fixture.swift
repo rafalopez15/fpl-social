@@ -38,6 +38,11 @@ struct Event: Codable, Identifiable, Hashable {
     let isCurrent: Bool
     /// The next gameweek to start. A gameweek already in progress is current, not next.
     let isNext: Bool
+    /// FPL has confirmed the gameweek's points (bonus and automatic subs applied).
+    var dataChecked: Bool? = nil
+
+    /// Finished and confirmed. Without `dataChecked`, `finished` decides.
+    var isConfirmed: Bool { finished && dataChecked != false }
 }
 
 // MARK: - Upcoming fixtures
