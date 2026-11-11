@@ -6,7 +6,7 @@
 import Foundation
 import OSLog
 
-/// A league's standings, a page of 50 at a time as the list scrolls, up to `maxPages`.
+/// A league's standings: pages of 50, stopping after `maxPages`.
 /// Each page is a call to FPL, and Overall runs to over 200,000 pages.
 @MainActor
 final class LeagueStandingsModel: ObservableObject {
@@ -61,8 +61,15 @@ final class LeagueStandingsModel: ObservableObject {
     }
 
     /// Reloads from the first page, keeping what's shown until it arrives.
-    func reload() async {
+    /// False if it failed, which leaves the list as it was.
+    @discardableResult
+    func reload() async -> Bool {
         await loadPage(1)
+    }
+
+    /// The team's row in the loaded standings, once FPL has ranked it there.
+    func standing(of teamID: Int) -> LeagueStanding? {
+        standings.first { $0.entry == teamID && ($0.rank ?? 0) > 0 }
     }
 
     /// The next page, when the last row shows. One at a time; nothing after the last
@@ -77,8 +84,10 @@ final class LeagueStandingsModel: ObservableObject {
         await loadMore()
     }
 
-    private func loadPage(_ page: Int) async {
-        guard !isLoading else { return }
+    /// False only for a failure; a cancelled load, or one skipped for another running, is true.
+    @discardableResult
+    private func loadPage(_ page: Int) async -> Bool {
+        guard !isLoading else { return true }
         isLoading = true
         defer { isLoading = false }
         if page == 1, loadedPages == 0 { state = .loading }
@@ -86,6 +95,7 @@ final class LeagueStandingsModel: ObservableObject {
             let result = try await load(page)
             if page == 1 {
                 standings = []
+                moreFailed = false
                 newEntries = result.newEntries ?? []
                 newEntriesHasNext = result.newEntriesHasNext ?? false
             }
@@ -97,9 +107,10 @@ final class LeagueStandingsModel: ObservableObject {
             hasNext = result.hasNext
             loadedPages = page
             state = .loaded
+            return true
         } catch {
             // Leaving the page cancels its load; that's not a failure to show.
-            if error is CancellationError || (error as? URLError)?.code == .cancelled { return }
+            if error is CancellationError || (error as? URLError)?.code == .cancelled { return true }
             Logger.network.notice("Couldn't load page \(page, privacy: .public) of a league: \(error.logSummary, privacy: .public)")
             if page == 1, loadedPages == 0 {
                 if case FPLAPIClient.APIError.notFound = error {
@@ -110,6 +121,7 @@ final class LeagueStandingsModel: ObservableObject {
             } else if page > 1 {
                 moreFailed = true
             }
+            return false
         }
     }
 }

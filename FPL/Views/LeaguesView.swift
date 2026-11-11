@@ -25,6 +25,12 @@ struct LeaguesCard: View {
         return manager.leagues
     }
 
+    /// Shown instead of a count: still loading, failed, or no leagues.
+    private var placeholder: String {
+        if leagues != nil { return Self.summary(count: 0) }
+        return teamStore.managerFailed ? "Couldn't load leagues" : "Loading…"
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             Text("LEAGUES")
@@ -40,7 +46,7 @@ struct LeaguesCard: View {
                 .buttonStyle(.plain)
                 .accessibilityLabel("Leagues, \(Self.summary(count: leagues.count))")
             } else {
-                row(leagues == nil ? "Loading…" : Self.summary(count: 0), chevron: false)
+                row(placeholder, chevron: false)
                     .foregroundStyle(.secondary)
                     .accessibilityElement(children: .combine)
             }
@@ -138,13 +144,14 @@ struct RankLabel: View {
     }
 }
 
-/// A league's standings, 50 teams a page, loading more as you scroll. Teams that
-/// joined this gameweek show apart, since FPL ranks them only after its next update.
+/// A league's standings: your rank, then its top teams. Teams that joined this
+/// gameweek show apart, since FPL ranks them only after its next update.
 struct LeagueStandingsView: View {
     let league: ManagerLeague
     /// The linked team, highlighted in the list.
     let teamID: Int
     @StateObject private var model: LeagueStandingsModel
+    @State private var toast: Toast?
 
     init(league: ManagerLeague, teamID: Int) {
         self.league = league
@@ -181,23 +188,28 @@ struct LeagueStandingsView: View {
         .task { await model.loadIfNeeded() }
         .refreshable {
             // Its own task: SwiftUI cancels the action's when the list redraws mid-load.
-            await Task { await model.reload() }.value
+            let reloaded = await Task { await model.reload() }.value
+            if !reloaded { toast = Toast(message: ProfileRefresh.failedMessage) }
         }
+        .toast($toast)
     }
 
-    /// From the team's league list, so it shows straight away, even in a league
-    /// too big to scroll to the team.
+    /// From the team's league list, so it shows straight away, even in a league too
+    /// big to reach the team. Its row in the standings, loaded later, wins when it's there.
     private var yourRank: some View {
-        HStack {
+        let row = model.standing(of: teamID)
+        let rank = row?.rank ?? league.rank
+        let change = row?.rankChange ?? league.rankChange
+        return HStack {
             Text("Your rank")
                 .font(.body.weight(.semibold))
             Spacer()
-            RankLabel(rank: league.rank, size: league.size, change: league.rankChange)
+            RankLabel(rank: rank, size: league.size, change: change)
         }
         .frame(minHeight: 44)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Your rank")
-        .accessibilityValue(LeagueRank.accessibilityText(rank: league.rank, size: league.size, change: league.rankChange))
+        .accessibilityValue(LeagueRank.accessibilityText(rank: rank, size: league.size, change: change))
         .themedRow()
     }
 
@@ -279,20 +291,38 @@ struct LeagueStandingsView: View {
     }
 }
 
+/// The standings' fixed columns, scaled with the text size.
+private enum StandingColumns {
+    static let rank: CGFloat = 64
+    static let points: CGFloat = 44
+
+    /// From this size the columns leave too little room for a name, so rows stack.
+    static func stacks(at size: DynamicTypeSize) -> Bool { size >= .xxLarge }
+}
+
 /// Column titles over the standings, lined up with `StandingRow`.
 private struct StandingsHeader: View {
+    @ScaledMetric(relativeTo: .body) private var rankWidth = StandingColumns.rank
+    @ScaledMetric(relativeTo: .body) private var pointsWidth = StandingColumns.points
+    @Environment(\.dynamicTypeSize) private var typeSize
+
     var body: some View {
-        HStack(spacing: 8) {
-            Text("Rank")
-                .frame(width: StandingRow.rankWidth, alignment: .leading)
-            Text("Team")
-            Spacer()
-            Text("GW")
-                .frame(width: StandingRow.pointsWidth, alignment: .trailing)
-            Text("Total")
-                .frame(width: StandingRow.pointsWidth, alignment: .trailing)
+        // Stacked rows label their own numbers.
+        if StandingColumns.stacks(at: typeSize) {
+            Text("Top teams")
+        } else {
+            HStack(spacing: 8) {
+                Text("Rank")
+                    .frame(width: rankWidth, alignment: .leading)
+                Text("Team")
+                Spacer()
+                Text("GW")
+                    .frame(width: pointsWidth, alignment: .trailing)
+                Text("Total")
+                    .frame(width: pointsWidth, alignment: .trailing)
+            }
+            .accessibilityHidden(true)
         }
-        .accessibilityHidden(true)
     }
 }
 
@@ -301,24 +331,17 @@ private struct StandingRow: View {
     let team: LeagueStanding
     let isYours: Bool
 
-    static let rankWidth: CGFloat = 64
-    static let pointsWidth: CGFloat = 44
+    @ScaledMetric(relativeTo: .body) private var rankWidth = StandingColumns.rank
+    @ScaledMetric(relativeTo: .body) private var pointsWidth = StandingColumns.points
+    @Environment(\.dynamicTypeSize) private var typeSize
 
     var body: some View {
-        HStack(spacing: 8) {
-            RankLabel(rank: team.rank, change: team.rankChange)
-                .frame(width: Self.rankWidth, alignment: .leading)
-            Text(team.entryName)
-                .font(.body.weight(isYours ? .semibold : .regular))
-                .lineLimit(2)
-                .minimumScaleFactor(0.8)
-            Spacer(minLength: 4)
-            Text(team.eventTotal.map(String.init) ?? "–")
-                .foregroundStyle(.secondary)
-                .frame(width: Self.pointsWidth, alignment: .trailing)
-            Text(team.total.map(String.init) ?? "–")
-                .fontWeight(.semibold)
-                .frame(width: Self.pointsWidth, alignment: .trailing)
+        Group {
+            if StandingColumns.stacks(at: typeSize) {
+                stacked
+            } else {
+                columns
+            }
         }
         .monospacedDigit()
         .frame(minHeight: 44)
@@ -329,5 +352,41 @@ private struct StandingRow: View {
             team.eventTotal.map { "\($0) points this gameweek" },
             team.total.map { "\($0) in total" },
         ].compactMap { $0 }.joined(separator: ", "))
+    }
+
+    private func name(lines: Int?) -> some View {
+        Text(team.entryName)
+            .font(.body.weight(isYours ? .semibold : .regular))
+            .lineLimit(lines)
+            .minimumScaleFactor(0.8)
+    }
+
+    private var columns: some View {
+        HStack(spacing: 8) {
+            RankLabel(rank: team.rank, change: team.rankChange)
+                .frame(width: rankWidth, alignment: .leading)
+            name(lines: 2)
+            Spacer(minLength: 4)
+            Text(team.eventTotal.map(String.init) ?? "–")
+                .foregroundStyle(.secondary)
+                .frame(width: pointsWidth, alignment: .trailing)
+            Text(team.total.map(String.init) ?? "–")
+                .fontWeight(.semibold)
+                .frame(width: pointsWidth, alignment: .trailing)
+        }
+    }
+
+    /// The name gets the row's width, with the numbers under it.
+    private var stacked: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            HStack(spacing: 8) {
+                RankLabel(rank: team.rank, change: team.rankChange)
+                name(lines: nil)
+            }
+            Text("GW \(team.eventTotal.map(String.init) ?? "–") · Total \(team.total.map(String.init) ?? "–")")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+        }
+        .padding(.vertical, 4)
     }
 }

@@ -27,7 +27,7 @@ enum Theme {
     static let warning = Color(hex: 0xFBBF24)
     /// Players ruled out (0% chance). 6.8:1 on background, 6.1:1 on surface.
     static let danger = Color(hex: 0xF87171)
-    /// Your team's row in a list of other teams (league standings): a green tint on the surface.
+    /// Your team's row in a list of other teams (league standings): a green tint over the screen's background.
     static let yourRow = accent.opacity(0.15)
     /// The squad pitch's grass and its lighter mowing stripe, darker than FPL's
     /// bright green so the pitch sits in the navy theme.

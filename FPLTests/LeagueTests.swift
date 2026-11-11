@@ -213,6 +213,50 @@ struct LeagueStandingsModelTests {
         #expect(model.state == .loaded)
     }
 
+    @Test func aFailedReloadKeepsTheListAndSaysSo() async {
+        pages.set(1, .success(FakeLeaguePages.page(1, entries: [1, 2], hasNext: false)))
+        let model = model
+        await model.loadIfNeeded()
+        pages.set(1, .failure(URLError(.notConnectedToInternet)))
+
+        #expect(await model.reload() == false)
+        #expect(model.state == .loaded)
+        #expect(model.standings.map(\.entry) == [1, 2])
+
+        pages.set(1, .success(FakeLeaguePages.page(1, entries: [2, 1], hasNext: false)))
+        #expect(await model.reload())
+    }
+
+    @Test func aReloadClearsAFailedLaterPage() async {
+        pages.set(1, .success(FakeLeaguePages.page(1, entries: [1], hasNext: true)))
+        pages.set(2, .failure(URLError(.notConnectedToInternet)))
+        let model = pagedModel
+        await model.loadIfNeeded()
+        await model.loadMore()
+        #expect(model.moreFailed)
+
+        await model.reload()
+        #expect(!model.moreFailed)
+    }
+
+    @Test func yourRowIsFoundOnceRanked() async {
+        var page = FakeLeaguePages.page(1, entries: [1, 2], hasNext: false)
+        pages.set(1, .success(page))
+        let model = model
+        await model.loadIfNeeded()
+        #expect(model.standing(of: 2)?.rank == 2)
+        #expect(model.standing(of: 3) == nil)
+
+        // Rank 0: joined this gameweek, not ranked yet.
+        page = LeagueStandings(
+            id: 7, name: "Mates", lastUpdated: .now, page: 1, hasNext: false,
+            standings: [LeagueStanding(entry: 2, entryName: "Team 2", rank: 0, lastRank: 0, total: 0, eventTotal: 0)],
+            newEntries: [], newEntriesHasNext: false)
+        pages.set(1, .success(page))
+        await model.reload()
+        #expect(model.standing(of: 2) == nil)
+    }
+
     @Test func reloadingStartsFromTheFirstPage() async {
         pages.set(1, .success(FakeLeaguePages.page(1, entries: [1, 2], hasNext: true)))
         pages.set(2, .success(FakeLeaguePages.page(2, entries: [3], hasNext: false)))

@@ -15,6 +15,8 @@ final class LinkedTeamStore: ObservableObject {
     @Published private(set) var linked: LinkedTeam?
     /// The latest details for the linked team (points, rank). Nil until refreshed.
     @Published private(set) var manager: Manager?
+    /// The details couldn't load and there are none to show.
+    @Published private(set) var managerFailed = false
     /// Transfers made since the last check, waiting for the "why" prompt.
     @Published private(set) var pendingTransfers: [NamedTransfer] = []
     /// Every transfer this season, newest first, for Profile. Nil until loaded.
@@ -108,6 +110,7 @@ final class LinkedTeamStore: ObservableObject {
     func link(_ team: LinkedTeam, manager: Manager? = nil) {
         save(team)
         self.manager = manager
+        managerFailed = false
         Logger.linkedTeam.notice("Linked team \(team.id, privacy: .private)")
         // Only transfers made from now on get a prompt; the season so far doesn't.
         // A team linked before, such as one switched back to, keeps its time.
@@ -127,6 +130,7 @@ final class LinkedTeamStore: ObservableObject {
         if let id = linked?.id { setTransfersSeenUntil(nil, for: id) }
         linked = nil
         manager = nil
+        managerFailed = false
         pendingTransfers = []
         transferHistory = nil
         transferHistoryFailed = false
@@ -203,6 +207,7 @@ final class LinkedTeamStore: ObservableObject {
             // A name from the account's list can be a day old, and teams get renamed.
             if manager.name != linked?.teamName { save(LinkedTeam(manager)) }
         }
+        managerFailed = self.manager == nil
         if let history { self.history = history }
         if let history, let transfers {
             freeTransfers = FreeTransfers.available(history: history, upcoming: transfers)
