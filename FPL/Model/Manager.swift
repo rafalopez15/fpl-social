@@ -29,6 +29,8 @@ struct Manager: Codable, Identifiable, Hashable {
     /// Total value (squad plus bank) at the last deadline, in tenths of a million.
     let lastDeadlineValue: Int?
     let lastDeadlineTotalTransfers: Int?
+    /// The team's classic leagues; nil from an API without the field.
+    let leagues: [ManagerLeague]?
 
     /// The squad's value at the last deadline without the bank, as FPL's site shows
     /// it, in tenths of a million. Nil when the total is missing.

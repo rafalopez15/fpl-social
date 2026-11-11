@@ -58,7 +58,18 @@ struct ContractTests {
     }
 
     @Test func manager() throws {
-        #expect(try Self.decode(Manager.self, from: "manager").id == 1)
+        let manager = try Self.decode(Manager.self, from: "manager")
+        #expect(manager.id == 1)
+        let leagues = try #require(manager.leagues)
+        #expect(leagues.contains { $0.id == 314 && $0.kind == .system })
+        #expect(!leagues.contains { $0.kind == .unknown })
+    }
+
+    @Test func league() throws {
+        let league = try Self.decode(LeagueStandings.self, from: "league")
+        #expect(league.id == 314)
+        #expect(league.standings.count == 50)
+        #expect(league.hasNext)
     }
 
     @Test func transfers() throws {

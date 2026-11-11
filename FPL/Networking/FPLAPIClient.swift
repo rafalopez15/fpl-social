@@ -122,6 +122,12 @@ struct FPLAPIClient: NotesAPI, TeamsAPI {
         try await get("events/\(gameweek)/live")
     }
 
+    /// `GET /api/leagues/{id}?page=`: a classic league's standings, 50 teams a page.
+    /// 404 for an unknown or head-to-head league; 503 when FPL is down or updating.
+    func league(id: Int, page: Int = 1) async throws -> LeagueStandings {
+        try await get("leagues/\(id)", query: [URLQueryItem(name: "page", value: "\(page)")])
+    }
+
     /// `GET /api/events`: every gameweek of the season.
     func events() async throws -> [Event] {
         try await get("events")
@@ -275,11 +281,12 @@ struct FPLAPIClient: NotesAPI, TeamsAPI {
         return data
     }
 
-    /// The path with manager and note IDs taken out, so it can be logged as public.
+    /// The path with manager, league and note IDs taken out, so it can be logged as public.
     static func route(_ path: String) -> String {
         path.replacingOccurrences(of: #"managers/\d+"#, with: "managers/{id}", options: .regularExpression)
             .replacingOccurrences(of: #"notes/[0-9a-fA-F-]{36}"#, with: "notes/{id}", options: .regularExpression)
             .replacingOccurrences(of: #"teams/\d+"#, with: "teams/{id}", options: .regularExpression)
+            .replacingOccurrences(of: #"leagues/\d+"#, with: "leagues/{id}", options: .regularExpression)
     }
 }
 

@@ -5,7 +5,8 @@
 #   .github/scripts/fetch_contract_fixtures.sh [base URL]
 #
 # Run it to refresh the committed fixtures; the daily contract workflow runs it
-# against production before the tests. Manager 1 is FPL's own public team.
+# against production before the tests. Manager 1 is FPL's own public team, and
+# league 314 is Overall.
 #
 # A 503 that outlasts the retries (FPL down or updating), or the picks 404 before
 # the season's first deadline, keeps the committed fixture with a warning instead
@@ -55,6 +56,8 @@ fetch transfers "managers/$manager/transfers"
 fetch history "managers/$manager/history"
 # No picks until the first deadline.
 fetch picks "managers/$manager/picks" 404
+# Overall, which every team is in, so it always exists.
+fetch league "leagues/314"
 
 # The API no longer sends the manager's real name; drop it anyway in case it comes back.
 # The region is personal too; the team name is what the app and tests check.
