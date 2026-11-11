@@ -5,8 +5,8 @@
 
 import SwiftUI
 
-/// Profile's Following card: how many teams you follow, opening the Following page.
-/// Signed out it offers sign-in instead. Hidden when the build has no sign-in.
+/// The Following part of Profile's account card: how many teams you follow, opening
+/// the Following page. Signed out it offers sign-in instead. Hidden when the build has no sign-in.
 struct FollowingCard: View {
     @EnvironmentObject private var account: AccountStore
     @EnvironmentObject private var teamSync: TeamSync
@@ -59,9 +59,7 @@ struct FollowingCard: View {
                     .accessibilityLabel("Following, \(status)")
                 }
             }
-            .padding(16)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Theme.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
             .sheet(isPresented: $isSigningIn) {
                 SignInView(reason: Self.signInReason)
             }

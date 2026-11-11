@@ -52,9 +52,7 @@ struct ProfileView: View {
                             ErrorLine(error: error)
                         }
 
-                        AccountCard()
-
-                        FollowingCard()
+                        ProfileAccountCard(showsLeagues: true)
 
                         SquadSection(selected: $squadGameweek)
 
@@ -71,9 +69,7 @@ struct ProfileView: View {
                             Task { if await teamSync.link(manager) { isChanging = false } }
                         }
 
-                        AccountCard()
-
-                        FollowingCard()
+                        ProfileAccountCard(showsLeagues: false)
                     }
                 }
                 .padding(16)
@@ -105,6 +101,43 @@ struct ProfileView: View {
             // SquadSection, which isn't on screen while another team is picked.
             .onChange(of: teamStore.linked?.id) { squadGameweek = nil }
         }
+    }
+}
+
+/// Account, Following and Leagues in one card, with a hairline between the parts
+/// shown. Without sign-in in the build only Leagues is left; with neither, no card.
+private struct ProfileAccountCard: View {
+    @EnvironmentObject private var account: AccountStore
+    /// True with a team linked.
+    let showsLeagues: Bool
+
+    var body: some View {
+        let hasAccount = account.state != .unavailable
+        if hasAccount || showsLeagues {
+            VStack(alignment: .leading, spacing: 12) {
+                if hasAccount {
+                    AccountCard()
+                    hairline
+                    FollowingCard()
+                }
+                if hasAccount && showsLeagues {
+                    hairline
+                }
+                if showsLeagues {
+                    LeaguesCard()
+                }
+            }
+            .padding(16)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Theme.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        }
+    }
+
+    private var hairline: some View {
+        Rectangle()
+            .fill(Theme.border)
+            .frame(height: 1)
+            .accessibilityHidden(true)
     }
 }
 

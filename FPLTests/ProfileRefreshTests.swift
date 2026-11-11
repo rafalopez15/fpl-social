@@ -48,6 +48,30 @@ extension StubbedNetworkTests {
             ]
         }
 
+        @Test func teamDetailsThatNeverLoadedAreMarkedFailed() async throws {
+            let suite = "FPLTests.\(UUID().uuidString)"
+            let defaults = try #require(UserDefaults(suiteName: suite))
+            defer { defaults.removePersistentDomain(forName: suite) }
+            let store = LinkedTeamStore(defaults: defaults, client: client)
+            store.link(LinkedTeam(try ManagerTests.manager()))
+            stubAll()
+            StubURLProtocol.responses["/api/managers/1"] = (503, #"{"detail": "FPL is unavailable right now"}"#)
+
+            await store.refresh()
+            #expect(store.manager == nil)
+            #expect(store.managerFailed)
+
+            stubAll()
+            await store.refresh()
+            #expect(store.manager != nil)
+            #expect(!store.managerFailed)
+
+            // A later failure keeps the details already shown.
+            StubURLProtocol.responses["/api/managers/1"] = (503, #"{"detail": "FPL is unavailable right now"}"#)
+            await store.refresh()
+            #expect(!store.managerFailed)
+        }
+
         @Test func aPullThatWorksShowsNoToast() async throws {
             let (store, cleanup) = try store()
             defer { cleanup() }

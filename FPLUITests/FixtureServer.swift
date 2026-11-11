@@ -27,6 +27,7 @@ final class FixtureServer: @unchecked Sendable {
         (#"^/api/managers/\d+/transfers$"#, "transfers"),
         (#"^/api/managers/\d+/history$"#, "history"),
         (#"^/api/managers/\d+/picks$"#, "picks"),
+        (#"^/api/leagues/\d+$"#, "league"),
     ]
 
     private let listener: NWListener
