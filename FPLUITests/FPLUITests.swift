@@ -43,6 +43,21 @@ final class FPLUITests: XCTestCase {
     }
 
     @MainActor
+    func testViewingALeague() throws {
+        let league = try Fixtures.firstLeague()
+        let leader = try Fixtures.leagueLeader()
+        try linkManager1()
+
+        let card = element(labelled: "Leagues, ")
+        XCTAssertTrue(card.waitForExistence(timeout: 10))
+        card.tap()
+        let row = app.buttons[league].firstMatch
+        XCTAssertTrue(row.waitForExistence(timeout: 5))
+        row.tap()
+        XCTAssertTrue(element(labelled: leader).waitForExistence(timeout: 10))
+    }
+
+    @MainActor
     func testWritingANote() throws {
         let gameweek = try Fixtures.currentGameweek()
         app.buttons["Notes"].firstMatch.tap()
@@ -95,6 +110,16 @@ private enum Fixtures {
 
     static func teamName() throws -> String {
         try XCTUnwrap(object("manager")["name"] as? String)
+    }
+
+    /// The first league on the Leagues page: the API lists them in order.
+    static func firstLeague() throws -> String {
+        try XCTUnwrap((object("manager")["leagues"] as? [[String: Any]])?.first?["name"] as? String)
+    }
+
+    /// The top team in the standings `FixtureServer` sends for every league.
+    static func leagueLeader() throws -> String {
+        try XCTUnwrap((object("league")["standings"] as? [[String: Any]])?.first?["entry_name"] as? String)
     }
 
     /// The gameweek Notes treats as current: `is_current`, or `is_next` before the season.

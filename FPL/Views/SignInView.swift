@@ -280,8 +280,8 @@ private struct ButtonLabel: View {
     }
 }
 
-/// Profile's Account card: an invitation to sign in, or who you're signed in
-/// as and Sign out. Hidden when the build has no sign-in.
+/// The account part of Profile's account card: an invitation to sign in, or who
+/// you're signed in as and its options. Hidden when the build has no sign-in.
 struct AccountCard: View {
     @EnvironmentObject private var account: AccountStore
     @EnvironmentObject private var noteSync: NoteSync
@@ -380,7 +380,7 @@ struct AccountCard: View {
             header
             content()
         }
-        .modifier(AccountCardSurface())
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     /// The header and email with the … menu beside them, like the team card's, and
@@ -419,7 +419,7 @@ struct AccountCard: View {
                 }
             }
         }
-        .modifier(AccountCardSurface())
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var header: some View {
@@ -427,14 +427,5 @@ struct AccountCard: View {
             .font(.caption.weight(.semibold))
             .foregroundStyle(.secondary)
             .accessibilityAddTraits(.isHeader)
-    }
-}
-
-private struct AccountCardSurface: ViewModifier {
-    func body(content: Content) -> some View {
-        content
-            .padding(16)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Theme.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 }
