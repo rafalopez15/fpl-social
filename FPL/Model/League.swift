@@ -23,7 +23,6 @@ struct ManagerLeague: Codable, Identifiable, Hashable {
     let id: Int
     let name: String
     let kind: Kind
-    /// How many teams it has.
     let size: Int?
     /// This team's rank; 0 until FPL first ranks a team that just joined.
     let rank: Int?
@@ -38,7 +37,6 @@ struct ManagerLeague: Codable, Identifiable, Hashable {
 struct LeagueStandings: Codable {
     let id: Int
     let name: String
-    /// When FPL last updated the standings.
     let lastUpdated: Date?
     let page: Int
     let hasNext: Bool
@@ -49,7 +47,7 @@ struct LeagueStandings: Codable {
     let newEntriesHasNext: Bool?
 }
 
-/// A team in the standings. Only the team's name: the API never sends a person's.
+/// A team in the standings, by team name only; the API never sends a person's.
 struct LeagueStanding: Codable, Identifiable, Hashable {
     /// The team's manager ID.
     let entry: Int
@@ -78,7 +76,7 @@ enum LeagueRank {
         return lastRank - rank
     }
 
-    /// "3 of 23", or in a large league "1.86M of 11.2M". Nil until the team is ranked.
+    /// "3", or with a size "3 of 23" ("1.86M of 11.2M" in a large league). Nil until the team is ranked.
     static func text(rank: Int?, size: Int?) -> String? {
         guard let rank, rank > 0 else { return nil }
         guard let size, size > 0 else { return number(rank) }

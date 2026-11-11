@@ -72,8 +72,7 @@ final class LeagueStandingsModel: ObservableObject {
         standings.first { $0.entry == teamID && ($0.rank ?? 0) > 0 }
     }
 
-    /// The next page, when the last row shows. One at a time; nothing after the last
-    /// or past the cap.
+    /// The next page, when the last row shows.
     func loadMore() async {
         guard loadedPages > 0, hasNext, !moreFailed, loadedPages < maxPages else { return }
         await loadPage(loadedPages + 1)

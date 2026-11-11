@@ -25,7 +25,6 @@ struct LeaguesCard: View {
         return manager.leagues
     }
 
-    /// Shown instead of a count: still loading, failed, or no leagues.
     private var placeholder: String {
         if leagues != nil { return Self.summary(count: 0) }
         return teamStore.managerFailed ? "Couldn't load leagues" : "Loading…"
@@ -121,8 +120,8 @@ struct LeaguesView: View {
     }
 }
 
-/// "▲ 3 of 23": rank, with a green up or red down arrow for the change since the
-/// gameweek before. "–" before the team is ranked.
+/// A rank ("3", or "3 of 23" with a size) and a green up or red down arrow for the
+/// change since the gameweek before. "–" before the team is ranked.
 struct RankLabel: View {
     let rank: Int?
     var size: Int?
@@ -326,7 +325,6 @@ private struct StandingsHeader: View {
     }
 }
 
-/// Rank and its movement, team name, gameweek points and total.
 private struct StandingRow: View {
     let team: LeagueStanding
     let isYours: Bool

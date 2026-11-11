@@ -8,7 +8,7 @@ import SwiftUI
 
 /// The Profile tab: link your FPL team by manager ID, then see it with options
 /// to change or unlink it. The Account card under it signs you in or out, and
-/// signed in, Following lists the teams you follow. Leagues lists the team's leagues.
+/// signed in, Following lists the teams you follow.
 struct ProfileView: View {
     @EnvironmentObject private var teamStore: LinkedTeamStore
     @EnvironmentObject private var teamSync: TeamSync
@@ -108,7 +108,7 @@ struct ProfileView: View {
 /// shown. Without sign-in in the build only Leagues is left; with neither, no card.
 private struct ProfileAccountCard: View {
     @EnvironmentObject private var account: AccountStore
-    /// With a team linked: its leagues.
+    /// True with a team linked.
     let showsLeagues: Bool
 
     var body: some View {
