@@ -193,8 +193,7 @@ private struct SquadCard: View {
         .background(Theme.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 
-    /// "Gameweek 9 · 45 pts" (with "Live" while it's the live sum) over
-    /// "15 pts on the bench", with the chip on the right.
+    /// "Gameweek 9 · 45 pts" and a Live tag over "15 pts on the bench", with the chip on the right.
     private var header: some View {
         HStack(alignment: .top) {
             VStack(alignment: .leading, spacing: 2) {

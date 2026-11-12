@@ -112,14 +112,14 @@ struct NotesView: View {
 
             // One card per gameweek: the header is the card's first row, so swipe
             // to delete, undo and VoiceOver keep working as a normal list.
+            let squadPoints = linkedTeam.gameweekPoints(events: gameweeks.events)
             ForEach(NoteSection.sections(for: notes, currentGameweek: gameweeks.current)) { section in
                 Section {
                     GameweekHeader(section: section,
                                    currentGameweek: gameweeks.current,
                                    deadline: section.gameweek.flatMap(gameweeks.deadline(for:)),
                                    score: section.gameweek.flatMap {
-                                       GameweekScore.score(for: $0, history: linkedTeam.history,
-                                                           squad: linkedTeam.gameweekPoints(events: gameweeks.events))
+                                       GameweekScore.score(for: $0, history: linkedTeam.history, squad: squadPoints)
                                    }) { gameweek in
                         editor = EditorTarget(gameweek: gameweek)
                     }

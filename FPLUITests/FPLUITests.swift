@@ -42,8 +42,8 @@ final class FPLUITests: XCTestCase {
         XCTAssertTrue(element(labelled: "\(squad.captain), \(squad.captainTeam)").waitForExistence(timeout: 10))
     }
 
-    /// The squad's gameweek isn't confirmed and FPL's own numbers are behind, each
-    /// by a different amount: every screen shows the sum of the cards, marked live.
+    /// With the gameweek unconfirmed and FPL's numbers behind, every screen shows
+    /// the sum of the cards, marked live.
     @MainActor
     func testALiveGameweek() throws {
         let squad = try Fixtures.squad()
@@ -163,7 +163,7 @@ private enum Fixtures {
                      captainTeam: try XCTUnwrap(team["name"] as? String))
     }
 
-    /// What the squad's cards add up to: live points times multiplier, and the bench's own.
+    /// Live points times multiplier, and the bench's own.
     static func liveSum() throws -> (points: Int, bench: Int) {
         let live = Dictionary(try array("live").compactMap { row in
             (row["id"] as? Int).map { ($0, row["total_points"] as? Int ?? 0) }
@@ -177,8 +177,8 @@ private enum Fixtures {
         return (points, bench)
     }
 
-    /// The fixtures as they'd be mid-gameweek: the squad's gameweek not confirmed,
-    /// and the manager, picks and history each behind the live points.
+    /// The squad's gameweek unconfirmed, and the manager, picks and history each
+    /// behind the live points by a different amount.
     static func liveGameweek() throws -> [String: Data] {
         let gameweek = try squad().gameweek
         let events = try array("events").map { event -> [String: Any] in

@@ -41,7 +41,7 @@ struct Event: Codable, Identifiable, Hashable {
     /// FPL has confirmed the gameweek's points (bonus and automatic subs applied).
     var dataChecked: Bool? = nil
 
-    /// Finished and confirmed. Without `dataChecked`, `finished` decides.
+    /// The API always sends `dataChecked`; `finished` alone is a safety net.
     var isConfirmed: Bool { finished && dataChecked != false }
 }
 

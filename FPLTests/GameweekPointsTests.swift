@@ -7,10 +7,8 @@ import Foundation
 import Testing
 @testable import FPL
 
-/// A live gameweek's points: the sum the squad's cards add up to, and when FPL's
-/// own numbers take over.
+/// A live gameweek's points: the live sum, and when FPL's numbers take over.
 struct GameweekPointsTests {
-    /// Each player's own points in gameweek 9.
     static let live = LivePoints(gameweek: 9, elements: [
         LiveElement(id: 1, totalPoints: 6, minutes: 90),
         LiveElement(id: 2, totalPoints: 2, minutes: 90),
@@ -141,8 +139,7 @@ struct GameweekPointsTests {
     }
 }
 
-/// The store's number for the team card, the squad header and Notes, against
-/// stubbed responses for a live gameweek.
+/// `LinkedTeamStore.gameweekPoints` against stubbed responses for a live gameweek.
 extension StubbedNetworkTests {
     @MainActor @Suite
     struct LiveGameweekTests {

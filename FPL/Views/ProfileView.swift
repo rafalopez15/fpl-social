@@ -163,8 +163,7 @@ private struct LinkedTeamCard: View {
     let team: LinkedTeam
     /// Latest details; nil until refreshed, in which case stats show "–".
     let manager: Manager?
-    /// The latest squad's gameweek points, so this card and the squad's agree.
-    /// Nil until the squad loads, and the manager's own numbers show.
+    /// The latest squad's gameweek points. Nil until the squad loads, when the manager's show.
     let gameweekPoints: GameweekPoints?
     /// Free transfers for the next deadline; nil until worked out.
     let freeTransfers: Int?

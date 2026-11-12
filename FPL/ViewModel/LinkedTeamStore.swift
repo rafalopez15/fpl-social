@@ -360,8 +360,7 @@ final class LinkedTeamStore: ObservableObject {
 }
 
 extension LinkedTeamStore {
-    /// The latest squad's gameweek points, for the team card, the squad header and
-    /// Notes. `events` are the gameweeks, which say whether FPL has confirmed it.
+    /// The latest squad's gameweek points. `events` say whether FPL has confirmed it.
     func gameweekPoints(events: [Event]) -> GameweekPoints? {
         guard case .loaded(let picks) = squad else { return nil }
         let event = events.first { $0.id == picks.entryHistory?.event }
