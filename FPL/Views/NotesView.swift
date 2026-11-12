@@ -308,11 +308,15 @@ private struct GameweekHeader: View {
 /// "▲ 338K". The arrow is green up, red down, so the shape and color both tell it.
 private struct ScoreColumn: View {
     let score: GameweekScore
+    @Environment(\.dynamicTypeSize) private var typeSize
+
+    /// Beside the points the tag squeezes the title from this size up.
+    private var tagGoesUnder: Bool { typeSize >= .xLarge }
 
     var body: some View {
         VStack(alignment: .trailing, spacing: 2) {
             HStack(spacing: 4) {
-                if score.isLive { LiveTag() }
+                if score.isLive, !tagGoesUnder { LiveTag() }
                 if score.hitCost > 0 {
                     Text("−\(score.hitCost)")
                         .font(.caption.weight(.semibold))
@@ -335,6 +339,7 @@ private struct ScoreColumn: View {
                         .foregroundStyle(.secondary)
                 }
             }
+            if score.isLive, tagGoesUnder { LiveTag() }
         }
         // The header's label already reads these out.
         .accessibilityHidden(true)

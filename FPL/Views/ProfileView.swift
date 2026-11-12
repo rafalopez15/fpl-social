@@ -249,11 +249,10 @@ private struct LinkedTeamCard: View {
 
     private func stat(_ label: String, _ value: String?, isLive: Bool = false) -> some View {
         VStack(alignment: .leading, spacing: 2) {
-            HStack(spacing: 6) {
+            LiveTagged(isLive: isLive) {
                 Text(value ?? "–")
                     .font(.headline)
                     .monospacedDigit()
-                if isLive { LiveTag() }
             }
             Text(label)
                 .font(.caption)

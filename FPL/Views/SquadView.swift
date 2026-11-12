@@ -197,10 +197,9 @@ private struct SquadCard: View {
     private var header: some View {
         HStack(alignment: .top) {
             VStack(alignment: .leading, spacing: 2) {
-                HStack(spacing: 6) {
+                LiveTagged(isLive: points?.isLive == true) {
                     Text(title)
                         .font(.headline)
-                    if points?.isLive == true { LiveTag() }
                 }
                 if let bench = points?.bench {
                     Text("\(bench) pts on the bench")
