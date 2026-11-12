@@ -11,36 +11,34 @@ import SwiftUI
 
 /// The app's top-level tabs. Each tab owns its own NavigationStack.
 enum AppTab: CaseIterable, Identifiable {
-    case feed, players, notes, profile
+    case profile, feed, notes
 
     var id: Self { self }
 
     var title: String {
         switch self {
-        case .feed: "Feed"
-        case .players: "Players"
-        case .notes: "Notes"
         case .profile: "Profile"
+        case .feed: "Feed"
+        case .notes: "Notes"
         }
     }
 
     var systemImage: String {
         switch self {
-        case .feed: "house"
-        case .players: "tshirt"
-        case .notes: "note.text"
         case .profile: "person.crop.circle"
+        case .feed: "house"
+        case .notes: "note.text"
         }
     }
 }
 
-/// Root view: the four tabs plus the custom tab bar.
+/// Root view: the tabs plus the custom tab bar.
 ///
 /// Uses a ZStack instead of TabView so the theme's flat tab bar replaces the
 /// iOS 26 glass one. Every tab stays alive, so switching keeps scroll position
 /// and loaded data, and the switch itself is instant.
 struct ContentView: View {
-    @State private var selection: AppTab = .feed
+    @State private var selection: AppTab = .profile
     /// Shared so a note written from any tab is tagged with the current gameweek.
     @ObservedObject private var gameweeks = GameweekStore.shared
     /// The FPL team shown on Profile, shared for transfer notes.
@@ -108,10 +106,9 @@ struct ContentView: View {
     @ViewBuilder
     private func content(for tab: AppTab) -> some View {
         switch tab {
-        case .feed: FeedView()
-        case .players: PlayersView()
-        case .notes: NotesView()
         case .profile: ProfileView()
+        case .feed: FeedView()
+        case .notes: NotesView()
         }
     }
 }
