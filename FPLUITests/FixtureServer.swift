@@ -32,6 +32,11 @@ final class FixtureServer: @unchecked Sendable {
 
     private let listener: NWListener
     private let queue = DispatchQueue(label: "FixtureServer")
+    /// Only touched on `queue`.
+    private var paths: [String] = []
+
+    /// Every path the app has asked for so far, without the query.
+    var requestedPaths: [String] { queue.sync { paths } }
 
     init() throws {
         let parameters = NWParameters.tcp
@@ -68,6 +73,7 @@ final class FixtureServer: @unchecked Sendable {
             let requestLine = data.flatMap { String(data: $0, encoding: .utf8) }?.split(separator: " ")
             let target = requestLine.map { $0.count > 1 ? String($0[1]) : "/" } ?? "/"
             let path = String(target.split(separator: "?").first ?? "")
+            self.paths.append(path)
             let (status, body) = Self.response(for: path)
             let head = """
                 HTTP/1.1 \(status) \(status == 200 ? "OK" : "Not Found")\r

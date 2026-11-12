@@ -60,10 +60,15 @@ final class FPLUITests: XCTestCase {
     @MainActor
     func testOpeningAPlayerFromAllPlayers() throws {
         let player = try Fixtures.topPlayer()
-        app.buttons["All players"].tap()
+        let allPlayers = app.buttons["All players"]
+        XCTAssertTrue(allPlayers.waitForExistence(timeout: 10))
+        // The list loads when it's opened, not at launch.
+        XCTAssertEqual(playerListRequests, 0)
+        allPlayers.tap()
         let info = app.buttons.matching(NSPredicate(format: "label IN %@",
                                                     ["Stats for \(player)", "Stats and news for \(player)"])).firstMatch
         XCTAssertTrue(info.waitForExistence(timeout: 10))
+        XCTAssertEqual(playerListRequests, 1)
         XCTAssertTrue(app.searchFields.firstMatch.exists)
         XCTAssertTrue(app.navigationBars.buttons["Profile"].exists)
         info.tap()
@@ -85,6 +90,10 @@ final class FPLUITests: XCTestCase {
 
         let row = app.staticTexts["Captain for the double"]
         XCTAssertTrue(row.waitForExistence(timeout: 5))
+    }
+
+    private var playerListRequests: Int {
+        server?.requestedPaths.filter { $0.hasPrefix("/api/elements/position/") }.count ?? 0
     }
 
     /// The first element whose label contains `text`: cards combine their texts into one label.
