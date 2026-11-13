@@ -34,6 +34,14 @@ struct GameweekExtrasTests {
         #expect(FixtureRow.countDescription(2) == "2 of your players")
     }
 
+    @Test func countsEveryoneWhoScoresWithBenchBoost() throws {
+        let players = try Dictionary(uniqueKeysWithValues: [7, 8, 10].map { ($0, try Self.player($0, team: 1)) })
+        let squad = ManagerPicks(picks: [.init(element: 7, position: 4, multiplier: 2),
+                                         .init(element: 8, position: 11, multiplier: 0),   // subbed off
+                                         .init(element: 10, position: 13, multiplier: 1)]) // bench boosted
+        #expect(squad.players(in: Base.upcoming, from: players).map(\.id) == [7, 10])
+    }
+
     // MARK: A team's next fixtures
 
     @Test func aTeamsNextFixturesAreTheSoonestStillToKickOff() throws {

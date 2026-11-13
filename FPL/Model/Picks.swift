@@ -33,11 +33,11 @@ struct ManagerPicks: Decodable, Equatable {
         }
     }
 
-    /// The starting XI's players whose club plays in `fixture`, in squad order; the
-    /// bench doesn't count. A pick `players` doesn't have is left out.
+    /// The players who score for you whose club plays in `fixture`, in squad order: the
+    /// starting XI, or all 15 with Bench Boost. A pick `players` doesn't have is left out.
     func players(in fixture: Fixture, from players: [Int: Element]) -> [SquadPlayer] {
-        starters.compactMap { pick in
-            guard let element = players[pick.element],
+        picks.sorted { $0.position < $1.position }.compactMap { pick in
+            guard pick.scores, let element = players[pick.element],
                   element.team == fixture.teamH || element.team == fixture.teamA
             else { return nil }
             return SquadPlayer(pick: pick, element: element)
@@ -81,6 +81,10 @@ struct ManagerPicks: Decodable, Equatable {
         var elementType: Int? = nil
 
         var id: Int { element }
+
+        /// True when the pick's points count: a multiplier above 0, or a starter when
+        /// it's missing.
+        var scores: Bool { multiplier.map { $0 > 0 } ?? (position <= 11) }
 
         /// "TC", "C" or "V", nil for everyone else.
         var badge: String? {
