@@ -19,9 +19,16 @@ struct ToastTests {
     }
 
     @Test func showsForThreeSecondsOrFiveWithAnAction() {
-        #expect(Toast("Refresh failed").displayDuration == .seconds(3))
-        #expect(Toast("Note deleted", action: .init("Undo") {}).displayDuration == .seconds(5))
-        #expect(Toast("Saved", duration: .seconds(1)).displayDuration == .seconds(1))
+        #expect(Toast("Refresh failed").displayDuration(voiceOver: false) == .seconds(3))
+        #expect(Toast("Note deleted", action: .init("Undo") {}).displayDuration(voiceOver: false) == .seconds(5))
+        #expect(Toast("Saved", duration: .seconds(1)).displayDuration(voiceOver: false) == .seconds(1))
+    }
+
+    @Test func voiceOverGetsLongerToReachAnAction() {
+        #expect(Toast("Note deleted", action: .init("Undo") {}).displayDuration(voiceOver: true) == .seconds(30))
+        // Nothing to reach without an action, and an explicit time is kept.
+        #expect(Toast("Refresh failed").displayDuration(voiceOver: true) == .seconds(3))
+        #expect(Toast("Saved", action: .init("View") {}, duration: .seconds(8)).displayDuration(voiceOver: true) == .seconds(8))
     }
 
     @Test func voiceOverHearsTheMessageAndTheAction() {

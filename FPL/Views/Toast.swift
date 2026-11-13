@@ -37,9 +37,12 @@ struct Toast: Identifiable, Equatable, Sendable {
         self.duration = duration
     }
 
-    /// 3 seconds, or 5 with an action, which takes time to notice and reach.
-    var displayDuration: Duration {
-        duration ?? .seconds(action == nil ? 3 : 5)
+    /// 3 seconds, or 5 with an action, which takes time to notice and reach. With VoiceOver
+    /// on an action gets 30: the announcement has to finish before focus can move to it.
+    func displayDuration(voiceOver: Bool) -> Duration {
+        if let duration { return duration }
+        guard action != nil else { return .seconds(3) }
+        return .seconds(voiceOver ? 30 : 5)
     }
 
     /// What VoiceOver reads as it appears: "Note deleted. Undo available."
@@ -75,6 +78,7 @@ extension View {
 private struct ToastModifier: ViewModifier {
     @Binding var toast: Toast?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.accessibilityVoiceOverEnabled) private var voiceOver
     @Environment(\.tabBarClearance) private var tabBarClearance
 
     func body(content: Content) -> some View {
@@ -92,7 +96,7 @@ private struct ToastModifier: ViewModifier {
                     .transition(reduceMotion ? .opacity : .move(edge: .bottom).combined(with: .opacity))
                     .task(id: toast.id) {
                         AccessibilityNotification.Announcement(toast.announcement).post()
-                        try? await Task.sleep(for: toast.displayDuration)
+                        try? await Task.sleep(for: toast.displayDuration(voiceOver: voiceOver))
                         guard !Task.isCancelled else { return }
                         $toast.dismiss(toast)
                     }
