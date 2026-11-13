@@ -76,6 +76,19 @@ final class FPLUITests: XCTestCase {
     }
 
     @MainActor
+    func testViewingAGameweeksFixtures() throws {
+        let gameweek = try Fixtures.openingGameweek()
+        let match = try Fixtures.firstMatch()
+        app.buttons["Gameweek"].firstMatch.tap()
+        XCTAssertTrue(app.buttons["Gameweek \(gameweek)"].waitForExistence(timeout: 10))
+        XCTAssertTrue(element(labelled: match).waitForExistence(timeout: 10))
+
+        app.buttons["Next gameweek"].tap()
+        XCTAssertTrue(app.buttons["Gameweek \(gameweek + 1)"].waitForExistence(timeout: 5))
+        XCTAssertTrue(element(labelled: match).waitForExistence(timeout: 10))
+    }
+
+    @MainActor
     func testWritingAndDeletingANote() throws {
         let gameweek = try Fixtures.currentGameweek()
         app.buttons["Notes"].firstMatch.tap()
@@ -166,6 +179,29 @@ private enum Fixtures {
         let events = try array("events")
         let event = events.first { $0["is_current"] as? Bool == true } ?? events.first { $0["is_next"] as? Bool == true }
         return try XCTUnwrap(event?["id"] as? Int)
+    }
+
+    /// The Gameweek tab opens on the current gameweek, or the next once the served
+    /// matches (the same for every gameweek) are all over.
+    static func openingGameweek() throws -> Int {
+        let matches = try array("event-fixtures").filter { !($0["kickoff_time"] is NSNull) }
+        let allPlayed = !matches.isEmpty && matches.allSatisfy {
+            $0["finished_provisional"] as? Bool == true || $0["finished"] as? Bool == true
+        }
+        let next = try array("events").first { $0["is_next"] as? Bool == true }?["id"] as? Int
+        let current = try currentGameweek()
+        return allPlayed ? next ?? current : current
+    }
+
+    /// The start of a match row's label: "Arsenal v Chelsea" before kickoff, "Arsenal 2, Chelsea 1" after.
+    static func firstMatch() throws -> String {
+        let match = try XCTUnwrap(try array("event-fixtures").first { !($0["kickoff_time"] is NSNull) })
+        let teams = try array("teams")
+        func name(_ key: String) throws -> String {
+            try XCTUnwrap(teams.first { $0["id"] as? Int == match[key] as? Int }?["name"] as? String)
+        }
+        guard match["started"] as? Bool == true else { return "\(try name("team_h")) v \(try name("team_a"))" }
+        return "\(try name("team_h")) \(match["team_h_score"] as? Int ?? 0), \(try name("team_a")) \(match["team_a_score"] as? Int ?? 0)"
     }
 
     static func squad() throws -> Squad {
