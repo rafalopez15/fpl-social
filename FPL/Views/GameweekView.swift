@@ -11,6 +11,7 @@ struct GameweekView: View {
     /// Tabs stay alive when hidden, so loading waits until this one is first shown.
     let isSelected: Bool
     @State private var hasBeenShown = false
+    @Environment(\.scenePhase) private var scenePhase
     @EnvironmentObject private var gameweeks: GameweekStore
     @ObservedObject private var lookups = TeamsAndFixturesStore.shared
     @StateObject private var model = GameweekFixturesModel()
@@ -51,6 +52,26 @@ struct GameweekView: View {
             await model.open(current: current, next: gameweeks.events.first(where: \.isNext)?.id)
             await teams
         }
+        // Only while the tab is on screen and a match is live, or FPL is down.
+        .task(id: RefreshKey(isOn: isSelected && scenePhase == .active && model.refreshesItself,
+                             gameweek: model.gameweek)) {
+            guard isSelected, scenePhase == .active else { return }
+            await refreshWhileLive()
+        }
+    }
+
+    /// Reloads the gameweek a minute after its last load, for as long as this runs.
+    private func refreshWhileLive() async {
+        while let delay = model.refreshDelay() {
+            try? await Task.sleep(for: .seconds(delay))
+            if Task.isCancelled { return }
+            await model.reload()
+        }
+    }
+
+    private struct RefreshKey: Equatable {
+        let isOn: Bool
+        let gameweek: Int?
     }
 
     private func row(_ fixture: Fixture) -> some View {
@@ -77,6 +98,12 @@ struct GameweekView: View {
                     .themedRow()
                 if let staleAsOf = model.staleAsOf {
                     Label(Self.staleLine(asOf: staleAsOf), systemImage: "arrow.triangle.2.circlepath")
+                        .font(.footnote)
+                        .foregroundStyle(Theme.secondaryText)
+                        .frame(maxWidth: .infinity, minHeight: 32)
+                        .themedRow()
+                } else if model.couldntUpdate {
+                    Label("Couldn't update", systemImage: "wifi.exclamationmark")
                         .font(.footnote)
                         .foregroundStyle(Theme.secondaryText)
                         .frame(maxWidth: .infinity, minHeight: 32)
