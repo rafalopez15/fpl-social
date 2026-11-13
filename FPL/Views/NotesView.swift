@@ -154,19 +154,6 @@ private struct SyncInvitation: View {
     }
 }
 
-extension Toast {
-    /// "Note deleted" with Undo, which puts the note back and syncs it.
-    @MainActor
-    static func noteDeleted(_ deleted: DeletedNote, sync: NoteSync, context: ModelContext) -> Toast {
-        Toast("Note deleted", action: Action("Undo") {
-            let note = sync.restore(deleted)
-            context.insert(note)
-            sync.changed(note)
-            context.saveNotes("Restored a deleted note")
-        })
-    }
-}
-
 /// A gameweek card's first row: the title with a "This week" tag or a lock,
 /// the deadline and note count, and a + to add a note. Empty gameweeks get a
 /// muted title so the ones with notes stand out when scanning the season.
