@@ -9,8 +9,9 @@ import Testing
 
 @MainActor
 struct ToastTests {
-    /// Stands in for a screen's `@State var toast`.
-    final class Screen {
+    /// Stands in for a screen's `@State var toast`. Only used on the main actor; unchecked
+    /// because newer SDKs make `Binding`'s closures `@Sendable`.
+    final class Screen: @unchecked Sendable {
         var toast: Toast?
         var undone = 0
         var binding: Binding<Toast?> {
