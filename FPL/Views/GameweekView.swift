@@ -53,6 +53,10 @@ struct GameweekView: View {
         }
     }
 
+    private func row(_ fixture: Fixture) -> some View {
+        FixtureRow(fixture: fixture, teams: lookups.teams, isStale: model.staleAsOf != nil).themedRow()
+    }
+
     private struct StartKey: Equatable {
         let hasBeenShown: Bool
         let current: Int?
@@ -71,6 +75,13 @@ struct GameweekView: View {
                 }
                 header(gameweek)
                     .themedRow()
+                if let staleAsOf = model.staleAsOf {
+                    Label(Self.staleLine(asOf: staleAsOf), systemImage: "arrow.triangle.2.circlepath")
+                        .font(.footnote)
+                        .foregroundStyle(Theme.secondaryText)
+                        .frame(maxWidth: .infinity, minHeight: 32)
+                        .themedRow()
+                }
             }
 
             matches
@@ -122,9 +133,7 @@ struct GameweekView: View {
             }
             ForEach(days) { day in
                 Section {
-                    ForEach(day.fixtures) { fixture in
-                        FixtureRow(fixture: fixture, teams: lookups.teams).themedRow()
-                    }
+                    ForEach(day.fixtures, content: row)
                 } header: {
                     // As written, not the grouped style's small capitals.
                     Text(Self.title(for: day.day))
@@ -135,9 +144,7 @@ struct GameweekView: View {
             }
             if !postponed.isEmpty {
                 Section("Postponed") {
-                    ForEach(postponed) { fixture in
-                        FixtureRow(fixture: fixture, teams: lookups.teams).themedRow()
-                    }
+                    ForEach(postponed, content: row)
                 }
             }
         }
@@ -230,6 +237,13 @@ extension GameweekView {
         var style = Date.FormatStyle.dateTime.weekday(.wide).month(.wide).day()
         style.timeZone = calendar.timeZone
         return day.formatted(style)
+    }
+
+    /// "FPL is updating · showing scores as of 13:28", in the user's time zone.
+    nonisolated static func staleLine(asOf date: Date, timeZone: TimeZone = .current) -> String {
+        var style = Date.FormatStyle(date: .omitted, time: .shortened)
+        style.timeZone = timeZone
+        return "FPL is updating · showing scores as of \(date.formatted(style))"
     }
 
     /// "Nov 21 – 23": the first to the last kickoff day. Nil with no kickoff times.

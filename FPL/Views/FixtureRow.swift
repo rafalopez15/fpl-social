@@ -9,6 +9,8 @@ import SwiftUI
 struct FixtureRow: View {
     let fixture: Fixture
     let teams: [Int: Team]
+    /// A saved copy from while FPL is down: a match in play isn't shown as live.
+    var isStale = false
 
     static var placeholder: some View {
         FixtureRow(fixture: Fixture(id: 0, event: nil, teamH: 0, teamA: 0, teamHDifficulty: 3, teamADifficulty: 3,
@@ -44,7 +46,7 @@ struct FixtureRow: View {
         }
         .frame(minHeight: 52)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(Self.description(of: fixture, home: home?.name, away: away?.name))
+        .accessibilityLabel(Self.description(of: fixture, home: home?.name, away: away?.name, isStale: isStale))
     }
 
     /// The team's name, or its short name where the name doesn't fit.
@@ -65,6 +67,12 @@ struct FixtureRow: View {
             chip {
                 Text(fixture.kickoffTime?.formatted(date: .omitted, time: .shortened) ?? "–")
                     .font(.footnote.weight(.medium).monospacedDigit())
+                    .foregroundStyle(.secondary)
+            }
+        case .live where isStale:
+            chip {
+                Text(score)
+                    .font(.subheadline.weight(.bold).monospacedDigit())
                     .foregroundStyle(.secondary)
             }
         case .live(let minute):
@@ -109,7 +117,7 @@ struct FixtureRow: View {
     }
 
     /// What VoiceOver reads: "Arsenal 2, Chelsea 1, live, 67 minutes".
-    nonisolated static func description(of fixture: Fixture, home: String?, away: String?,
+    nonisolated static func description(of fixture: Fixture, home: String?, away: String?, isStale: Bool = false,
                                         timeZone: TimeZone = .current) -> String {
         let home = home ?? "Home team", away = away ?? "Away team"
         let scoreline = "\(home) \(fixture.teamHScore ?? 0), \(away) \(fixture.teamAScore ?? 0)"
@@ -118,6 +126,8 @@ struct FixtureRow: View {
             var style = Date.FormatStyle(date: .omitted, time: .shortened)
             style.timeZone = timeZone
             return "\(home) v \(away), kicks off \(fixture.kickoffTime?.formatted(style) ?? "later")"
+        case .live where isStale:
+            return "\(scoreline), last known score"
         case .live(let minute):
             return "\(scoreline), live, \(minute) \(minute == 1 ? "minute" : "minutes")"
         case .finished:
@@ -162,6 +172,10 @@ private struct ClubDot: View {
         }
         Section("Postponed") {
             FixtureRow(fixture: fixture(4, home: 1, away: 3, kickoff: nil), teams: teams).themedRow()
+        }
+        Section("In play in a saved copy") {
+            FixtureRow(fixture: fixture(5, home: 2, away: 3, started: true, score: (1, 0), minutes: 67),
+                       teams: teams, isStale: true).themedRow()
         }
         Section("Empty gameweek") {
             Text("No matches this gameweek.")

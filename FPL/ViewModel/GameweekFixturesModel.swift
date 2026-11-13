@@ -19,10 +19,13 @@ final class GameweekFixturesModel: ObservableObject {
     @Published private(set) var gameweek: Int?
     @Published private(set) var state: State = .loading
     @Published private(set) var fixtures: [Fixture] = []
+    /// When the fixtures shown were fetched, if they're the API's saved copy from
+    /// while FPL is down. Nil when they're fresh.
+    @Published private(set) var staleAsOf: Date?
 
-    private let load: (_ gameweek: Int) async throws -> [Fixture]
+    private let load: (_ gameweek: Int) async throws -> Fetched<[Fixture]>
     /// Gameweeks loaded this session, shown at once when stepping back to one.
-    private var loaded: [Int: [Fixture]] = [:]
+    private var loaded: [Int: Fetched<[Fixture]>] = [:]
     /// Counts selections, so only the newest one's answer is shown.
     private var selection = 0
     /// False until `open` has finished without being cancelled.
@@ -36,9 +39,11 @@ final class GameweekFixturesModel: ObservableObject {
         load = { try await client.fixtures(gameweek: $0) }
     }
 
-    /// For tests: fixtures from `load` instead of the API.
-    init(load: @escaping (_ gameweek: Int) async throws -> [Fixture]) {
-        self.load = load
+    /// For tests: fixtures from `load` instead of the API, as a saved copy from
+    /// `staleAsOf` when that gives a time.
+    init(staleAsOf: @escaping (_ gameweek: Int) -> Date? = { _ in nil },
+         load: @escaping (_ gameweek: Int) async throws -> [Fixture]) {
+        self.load = { Fetched(value: try await load($0), staleAsOf: staleAsOf($0)) }
     }
 
     /// Picks the gameweek to start on, once: `current`, or `next` when every match
@@ -64,7 +69,8 @@ final class GameweekFixturesModel: ObservableObject {
     private func show(_ gameweek: Int) async -> Outcome {
         selection += 1
         self.gameweek = gameweek
-        fixtures = loaded[gameweek] ?? []
+        fixtures = loaded[gameweek]?.value ?? []
+        staleAsOf = loaded[gameweek]?.staleAsOf
         state = loaded[gameweek] == nil ? .loading : .loaded
         return await fetch(gameweek, selection: selection)
     }
@@ -90,10 +96,11 @@ final class GameweekFixturesModel: ObservableObject {
         }
     }
 
-    private func show(_ fixtures: [Fixture], for gameweek: Int, selection: Int) {
-        loaded[gameweek] = fixtures
+    private func show(_ fetched: Fetched<[Fixture]>, for gameweek: Int, selection: Int) {
+        loaded[gameweek] = fetched
         guard selection == self.selection else { return }
-        self.fixtures = fixtures
+        fixtures = fetched.value
+        staleAsOf = fetched.staleAsOf
         state = .loaded
     }
 }
