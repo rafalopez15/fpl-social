@@ -17,9 +17,11 @@ paths:
   - "FPL/Views/SquadView.swift"
   - "FPL/Views/PitchView.swift"
   - "FPL/Views/PointsLabel.swift"
+  - "FPL/Views/LiveTag.swift"
   - "FPLTests/TeamSyncTests.swift"
   - "FPLTests/LeagueTests.swift"
   - "FPLTests/ProfileRefreshTests.swift"
+  - "FPLTests/GameweekPointsTests.swift"
 ---
 
 # Teams, squad and leagues
@@ -42,6 +44,7 @@ paths:
 
 ## Squad
 
+- **A gameweek's points come from one function**: `ManagerPicks.gameweekPoints(live:event:)`, or `LinkedTeamStore.gameweekPoints(events:)` for the latest squad. FPL's four sources (the manager's `summary_event_points`, the picks' `entry_history`, the history and `/events/{gw}/live`) update at different times, so reading any other one makes the team card, squad header and Notes disagree. It's the live sum (with `LiveTag`) until `Event.isConfirmed` (`finished` and `data_checked`), then FPL's own number; also FPL's when live points, the event or a multiplier is missing. Earlier gameweeks always use FPL's.
 - Points come from `/events/{gw}/live` for the picks' gameweek (`entry_history.event`) times the multiplier, never from `players`' `event_points`, which can be a gameweek old.
 - "–" means yet to play: his team has a match not kicked off and he has no minutes (`LivePoints.score(for:team:)`). FPL's 0 minutes looks the same before and after a match.
 - If live points fail, cards show the next opponent on its difficulty color instead.
