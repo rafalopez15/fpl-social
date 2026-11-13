@@ -76,7 +76,7 @@ final class FPLUITests: XCTestCase {
     }
 
     @MainActor
-    func testWritingANote() throws {
+    func testWritingAndDeletingANote() throws {
         let gameweek = try Fixtures.currentGameweek()
         app.buttons["Notes"].firstMatch.tap()
         let add = app.buttons["Add note to Gameweek \(gameweek)"]
@@ -90,6 +90,15 @@ final class FPLUITests: XCTestCase {
 
         let row = app.staticTexts["Captain for the double"]
         XCTAssertTrue(row.waitForExistence(timeout: 5))
+
+        row.swipeLeft()
+        app.buttons["Delete"].tap()
+        XCTAssertTrue(row.waitForNonExistence(timeout: 5))
+        let undo = app.buttons["Undo"]
+        XCTAssertTrue(undo.waitForExistence(timeout: 5))
+        undo.tap()
+        XCTAssertTrue(row.waitForExistence(timeout: 5))
+        XCTAssertTrue(undo.waitForNonExistence(timeout: 5))
     }
 
     private var playerListRequests: Int {

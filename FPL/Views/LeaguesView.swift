@@ -188,7 +188,7 @@ struct LeagueStandingsView: View {
         .refreshable {
             // Its own task: SwiftUI cancels the action's when the list redraws mid-load.
             let reloaded = await Task { await model.reload() }.value
-            if !reloaded { toast = Toast(message: ProfileRefresh.failedMessage) }
+            if !reloaded { toast = Toast(ProfileRefresh.failedMessage, style: .warning) }
         }
         .toast($toast)
     }

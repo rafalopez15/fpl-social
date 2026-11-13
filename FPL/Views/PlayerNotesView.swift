@@ -19,9 +19,8 @@ struct PlayerNotesView: View {
     @EnvironmentObject private var account: AccountStore
     @Query private var notes: [Note]
     @State private var editing: Note?
-    /// The last deleted note, while its undo toast is showing.
-    @State private var deleted: DeletedNote?
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// "Note deleted", with Undo.
+    @State private var toast: Toast?
 
     private var sections: [NoteSection] {
         NoteSection.sections(for: notes.filter { $0.isAbout(player.id) })
@@ -38,25 +37,7 @@ struct PlayerNotesView: View {
                 }
             }
             .themedScreen()
-            .overlay(alignment: .bottom) {
-                if let deleted {
-                    UndoToast(message: "Note deleted") {
-                        let note = noteSync.restore(deleted)
-                        context.insert(note)
-                        noteSync.changed(note)
-                        context.saveNotes("Restored a deleted note")
-                        withAnimation { self.deleted = nil }
-                    }
-                    .padding(.horizontal, 16)
-                    .padding(.bottom, 8)
-                    .transition(reduceMotion ? .opacity : .move(edge: .bottom).combined(with: .opacity))
-                    .task(id: deleted.id) {
-                        try? await Task.sleep(for: .seconds(5))
-                        guard !Task.isCancelled else { return }
-                        withAnimation { self.deleted = nil }
-                    }
-                }
-            }
+            .toast($toast)
             .navigationTitle("Notes about \(player.webName)")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -88,12 +69,11 @@ struct PlayerNotesView: View {
                     }
                     .onDelete { offsets in
                         for note in offsets.map({ section.notes[$0] }) {
-                            withAnimation { deleted = DeletedNote(note) }
+                            toast = .noteDeleted(DeletedNote(note), sync: noteSync, context: context)
                             noteSync.deleting(note)
                             context.delete(note)
                         }
                         context.saveNotes("Deleted \(offsets.count) note(s)")
-                        AccessibilityNotification.Announcement("Note deleted. Undo available.").post()
                     }
                 } header: {
                     header(section)

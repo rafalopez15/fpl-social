@@ -165,7 +165,7 @@ enum ProfileRefresh {
         async let gameweeksLoaded = gameweeks.reload()
         async let teamLoaded = team.refresh(viewing: gameweek)
         let (gameweeksOK, teamOK) = await (gameweeksLoaded, teamLoaded)
-        return gameweeksOK && teamOK ? nil : Toast(message: failedMessage)
+        return gameweeksOK && teamOK ? nil : Toast(failedMessage, style: .warning)
     }
 }
 
