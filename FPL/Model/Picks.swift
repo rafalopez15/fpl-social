@@ -33,6 +33,25 @@ struct ManagerPicks: Decodable, Equatable {
         }
     }
 
+    /// The starting XI's players whose club plays in `fixture`, in squad order; the
+    /// bench doesn't count. A pick `players` doesn't have is left out.
+    func players(in fixture: Fixture, from players: [Int: Element]) -> [SquadPlayer] {
+        starters.compactMap { pick in
+            guard let element = players[pick.element],
+                  element.team == fixture.teamH || element.team == fixture.teamA
+            else { return nil }
+            return SquadPlayer(pick: pick, element: element)
+        }
+    }
+
+    /// A pick with its player.
+    struct SquadPlayer: Identifiable, Equatable {
+        let pick: Pick
+        let element: Element
+
+        var id: Int { pick.element }
+    }
+
     /// Players FPL brought on automatically, and the players they replaced.
     var subbedIn: Set<Int> { Set((automaticSubs ?? []).compactMap(\.elementIn)) }
     var subbedOut: Set<Int> { Set((automaticSubs ?? []).compactMap(\.elementOut)) }

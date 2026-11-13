@@ -13,6 +13,7 @@ struct GameweekView: View {
     @State private var hasBeenShown = false
     @Environment(\.scenePhase) private var scenePhase
     @EnvironmentObject private var gameweeks: GameweekStore
+    @EnvironmentObject private var linkedTeam: LinkedTeamStore
     @ObservedObject private var lookups = TeamsAndFixturesStore.shared
     @StateObject private var model = GameweekFixturesModel()
     @State private var toast: Toast?
@@ -75,7 +76,11 @@ struct GameweekView: View {
     }
 
     private func row(_ fixture: Fixture) -> some View {
-        FixtureRow(fixture: fixture, teams: lookups.teams, isStale: model.staleAsOf != nil).themedRow()
+        // The latest squad, whichever gameweek is shown. Nil with no team or squad.
+        let squad: ManagerPicks? = if case .loaded(let picks) = linkedTeam.squad { picks } else { nil }
+        return FixtureRow(fixture: fixture, teams: lookups.teams, isStale: model.staleAsOf != nil,
+                          yourPlayers: squad?.players(in: fixture, from: linkedTeam.players))
+            .themedRow()
     }
 
     private struct StartKey: Equatable {
@@ -288,4 +293,5 @@ extension GameweekView {
 #Preview {
     GameweekView(isSelected: true)
         .environmentObject(GameweekStore())
+        .environmentObject(LinkedTeamStore())
 }

@@ -13,6 +13,27 @@ import Testing
 struct GameweekExtrasTests {
     private typealias Base = GameweekFixturesTests
 
+    // MARK: Your players
+
+    static func player(_ id: Int, team: Int) throws -> Element {
+        let json = #"{"id": \#(id), "web_name": "Player \#(id)", "team": \#(team), "element_type": 3, "now_cost": 50, "status": "a"}"#
+        return try JSONDecoder.fplAPI.decode(Element.self, from: Data(json.utf8))
+    }
+
+    @Test func countsYourStartersInAMatch() throws {
+        // `fixture` is team 1 at home to team 2.
+        let players = try Dictionary(uniqueKeysWithValues: [(7, 1), (8, 2), (9, 3), (10, 2)].map {
+            ($0.0, try Self.player($0.0, team: $0.1))
+        })
+        let squad = ManagerPicks(picks: [.init(element: 10, position: 13), .init(element: 7, position: 4),
+                                         .init(element: 9, position: 1), .init(element: 8, position: 2),
+                                         .init(element: 99, position: 3)])
+        // Player 10 is on the bench, so he doesn't count.
+        #expect(squad.players(in: Base.upcoming, from: players).map(\.id) == [8, 7])
+        #expect(squad.players(in: Base.upcoming, from: [:]).isEmpty)
+        #expect(FixtureRow.countDescription(2) == "2 of your players")
+    }
+
     // MARK: Deadline countdown
 
     static func event(_ id: Int, deadline: Date) -> Event {

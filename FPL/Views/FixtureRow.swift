@@ -11,6 +11,10 @@ struct FixtureRow: View {
     let teams: [Int: Team]
     /// A saved copy from while FPL is down: a match in play isn't shown as live.
     var isStale = false
+    /// Your squad's players in this match. Nil without a squad, which leaves no room for a count.
+    var yourPlayers: [ManagerPicks.SquadPlayer]?
+    @State private var showsYourPlayers = false
+    @ScaledMetric(relativeTo: .caption) private var countWidth: CGFloat = 34
 
     static var placeholder: some View {
         FixtureRow(fixture: Fixture(id: 0, event: nil, teamH: 0, teamA: 0, teamHDifficulty: 3, teamADifficulty: 3,
@@ -28,6 +32,51 @@ struct FixtureRow: View {
     }
 
     var body: some View {
+        HStack(spacing: 4) {
+            // As wide as the count, so the score stays in the middle of the row.
+            if yourPlayers != nil { Color.clear.frame(width: countWidth, height: 1) }
+            match
+            if let yourPlayers { count(yourPlayers) }
+        }
+    }
+
+    /// How many of your players are in the match; tapping it lists them.
+    @ViewBuilder
+    private func count(_ players: [ManagerPicks.SquadPlayer]) -> some View {
+        if players.isEmpty {
+            Color.clear.frame(width: countWidth, height: 1)
+        } else {
+            Button {
+                showsYourPlayers = true
+            } label: {
+                HStack(spacing: 2) {
+                    Image(systemName: "person.fill")
+                        .font(.caption2)
+                    Text("\(players.count)")
+                        .font(.caption.weight(.semibold).monospacedDigit())
+                }
+                .foregroundStyle(Theme.accent)
+                .frame(width: countWidth)
+                .frame(minHeight: 44)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.borderless)
+            .accessibilityLabel(Self.countDescription(players.count))
+            .accessibilityHint("Lists them")
+            .popover(isPresented: $showsYourPlayers) {
+                YourPlayersList(players: players, teams: teams)
+                    .presentationBackground(Theme.surface)
+                    .presentationCompactAdaptation(.popover)
+            }
+        }
+    }
+
+    /// "1 of your players", "2 of your players".
+    nonisolated static func countDescription(_ count: Int) -> String {
+        "\(count) of your players"
+    }
+
+    private var match: some View {
         HStack(spacing: 10) {
             HStack(spacing: 8) {
                 name(home, alignment: .trailing)
@@ -135,6 +184,58 @@ struct FixtureRow: View {
         case .postponed:
             return "\(home) v \(away), postponed"
         }
+    }
+}
+
+/// Your starting players in one match: name, club and position, with the captain's badge.
+private struct YourPlayersList: View {
+    let players: [ManagerPicks.SquadPlayer]
+    let teams: [Int: Team]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Your players")
+                .font(.footnote.weight(.semibold))
+                .foregroundStyle(Theme.secondaryText)
+                .accessibilityAddTraits(.isHeader)
+            ForEach(players) { player in
+                HStack(spacing: 6) {
+                    Text(player.element.webName)
+                        .font(.subheadline.weight(.semibold))
+                    if let badge = player.pick.badge {
+                        Text(badge)
+                            .font(.caption2.weight(.bold))
+                            .foregroundStyle(Theme.onAccent)
+                            .padding(.horizontal, 4)
+                            .background(Theme.accent, in: Capsule())
+                    }
+                    Spacer(minLength: 12)
+                    Text(Self.detail(of: player, teams: teams))
+                        .font(.caption)
+                        .foregroundStyle(Theme.secondaryText)
+                }
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(Self.description(of: player, teams: teams))
+            }
+        }
+        .padding(16)
+        .frame(minWidth: 220)
+    }
+
+    /// "ARS · MID"
+    nonisolated static func detail(of player: ManagerPicks.SquadPlayer, teams: [Int: Team]) -> String {
+        [teams[player.element.team]?.shortName, player.element.position?.shortTitle]
+            .compactMap { $0 }.joined(separator: " · ")
+    }
+
+    nonisolated static func description(of player: ManagerPicks.SquadPlayer, teams: [Int: Team]) -> String {
+        let role: String? = switch player.pick.badge {
+        case "C", "TC": "captain"
+        case "V": "vice captain"
+        default: nil
+        }
+        return [player.element.webName, role, teams[player.element.team]?.name, player.element.position?.singularTitle]
+            .compactMap { $0 }.joined(separator: ", ")
     }
 }
 
