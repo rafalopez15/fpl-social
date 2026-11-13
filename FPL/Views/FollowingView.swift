@@ -85,19 +85,11 @@ struct FollowingCard: View {
 /// Pushed from Profile's Following card; pops back if the account signs out.
 struct FollowingView: View {
     @Environment(\.dismiss) private var dismiss
-    @Environment(\.tabBarClearance) private var tabBarClearance
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @EnvironmentObject private var account: AccountStore
     @EnvironmentObject private var teamSync: TeamSync
     @State private var isFollowing = false
-    /// The last team unfollowed, while its undo toast is showing.
-    @State private var unfollowed: Unfollowed?
-
-    private struct Unfollowed: Identifiable {
-        let id = UUID()
-        let managerID: Int
-        let name: String
-    }
+    /// "You unfollowed <team>", with Undo.
+    @State private var toast: Toast?
 
     var body: some View {
         List {
@@ -153,24 +145,7 @@ struct FollowingView: View {
             }
         }
         .themedScreen()
-        .overlay(alignment: .bottom) {
-            if let unfollowed {
-                UndoToast(message: "You unfollowed \(unfollowed.name)") {
-                    withAnimation { self.unfollowed = nil }
-                    Task { await teamSync.refollow(unfollowed.managerID) }
-                }
-                .padding(.horizontal, 16)
-                // The screen runs under the tab bar, so sit just above it.
-                .padding(.bottom, tabBarClearance + 4)
-                .transition(reduceMotion ? .opacity : .move(edge: .bottom).combined(with: .opacity))
-                // As long as the Notes tab's, and a newer unfollow restarts it.
-                .task(id: unfollowed.id) {
-                    try? await Task.sleep(for: .seconds(5))
-                    guard !Task.isCancelled else { return }
-                    withAnimation { self.unfollowed = nil }
-                }
-            }
-        }
+        .toast($toast)
         .navigationTitle("Following")
         .navigationBarTitleDisplayMode(.inline)
         // Profile hides its bar; this page needs one for Back.
@@ -193,8 +168,9 @@ struct FollowingView: View {
                 let name = name(of: team)
                 Task {
                     guard await teamSync.unfollow(team.managerId) else { return }
-                    withAnimation { unfollowed = Unfollowed(managerID: team.managerId, name: name) }
-                    AccessibilityNotification.Announcement("You unfollowed \(name). Undo available.").post()
+                    toast = Toast("You unfollowed \(name)", action: .init("Undo") {
+                        Task { await teamSync.refollow(team.managerId) }
+                    })
                 }
             }
             .buttonStyle(.bordered)
