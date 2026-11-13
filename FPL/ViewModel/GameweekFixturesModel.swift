@@ -20,9 +20,6 @@ final class GameweekFixturesModel: ObservableObject {
     @Published private(set) var state: State = .loading
     @Published private(set) var fixtures: [Fixture] = []
 
-    /// The API's 404 for a gameweek FPL has no matches for.
-    nonisolated static let noMatchesDetail = "Event not found"
-
     private let load: (_ gameweek: Int) async throws -> [Fixture]
     /// Gameweeks loaded this session, shown at once when stepping back to one.
     private var loaded: [Int: [Fixture]] = [:]
@@ -69,11 +66,6 @@ final class GameweekFixturesModel: ObservableObject {
     private func fetch(_ gameweek: Int, selection: Int) async -> Bool {
         do {
             show(try await load(gameweek), for: gameweek, selection: selection)
-            return true
-        } catch FPLAPIClient.APIError.notFound(let detail) where detail == Self.noMatchesDetail {
-            // A gameweek FPL has no matches for is an empty one, not a failure. Any other
-            // 404 (an API without this route, say) is a failure.
-            show([], for: gameweek, selection: selection)
             return true
         } catch {
             if selection == self.selection, loaded[gameweek] == nil { state = .failed }

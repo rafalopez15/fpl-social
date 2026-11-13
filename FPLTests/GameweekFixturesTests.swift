@@ -163,16 +163,18 @@ struct GameweekFixturesTests {
         #expect(model.state == .failed)
     }
 
-    @Test func aGameweekFPLHasNoMatchesForIsEmptyNotAFailure() async {
-        let model = GameweekFixturesModel { _ in throw FPLAPIClient.APIError.notFound("Event not found") }
+    @Test func aGameweekWithNoMatchesIsLoadedAndEmpty() async {
+        // The API's answer when every match is postponed out of the gameweek.
+        let model = GameweekFixturesModel { _ in [] }
         await model.select(7)
         #expect(model.state == .loaded)
         #expect(model.fixtures.isEmpty)
     }
 
-    @Test func anAPIWithoutTheRouteIsAFailureNotAnEmptyGameweek() async {
-        // An unknown route's 404, as from a backend preview older than the endpoint.
-        let model = GameweekFixturesModel { _ in throw FPLAPIClient.APIError.notFound("Not Found") }
+    @Test(arguments: ["Event not found", "Not Found"])
+    func a404IsAFailureNotAnEmptyGameweek(detail: String) async {
+        // A gameweek the API doesn't have, or a backend without the route.
+        let model = GameweekFixturesModel { _ in throw FPLAPIClient.APIError.notFound(detail) }
         await model.select(10)
         #expect(model.state == .failed)
     }
