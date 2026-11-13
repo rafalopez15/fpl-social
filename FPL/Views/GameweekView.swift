@@ -10,6 +10,7 @@ import SwiftUI
 struct GameweekView: View {
     /// Tabs stay alive when hidden, so loading waits until this one is first shown.
     let isSelected: Bool
+    @State private var hasBeenShown = false
     @EnvironmentObject private var gameweeks: GameweekStore
     @ObservedObject private var lookups = TeamsAndFixturesStore.shared
     @StateObject private var model = GameweekFixturesModel()
@@ -40,8 +41,12 @@ struct GameweekView: View {
             .navigationTitle("Gameweek")
             .toolbar(.hidden, for: .navigationBar)
         }
-        .task(id: StartKey(isSelected: isSelected, current: gameweeks.current)) {
-            guard isSelected, let current = gameweeks.current else { return }
+        .onChange(of: isSelected, initial: true) {
+            if isSelected { hasBeenShown = true }
+        }
+        // Keyed on having been shown, so leaving the tab doesn't cancel the first load.
+        .task(id: StartKey(hasBeenShown: hasBeenShown, current: gameweeks.current)) {
+            guard hasBeenShown, let current = gameweeks.current else { return }
             async let teams: Void = lookups.loadIfNeeded()
             await model.open(current: current, next: gameweeks.events.first(where: \.isNext)?.id)
             await teams
@@ -49,7 +54,7 @@ struct GameweekView: View {
     }
 
     private struct StartKey: Equatable {
-        let isSelected: Bool
+        let hasBeenShown: Bool
         let current: Int?
     }
 
@@ -375,4 +380,39 @@ private struct ClubDot: View {
 #Preview {
     GameweekView(isSelected: true)
         .environmentObject(GameweekStore())
+}
+
+#Preview("Row states") {
+    let teams = [1: Team(id: 1, name: "Arsenal", shortName: "ARS", primaryColor: "#EF0107"),
+                 2: Team(id: 2, name: "Newcastle", shortName: "NEW", primaryColor: "#241F20"),
+                 3: Team(id: 3, name: "Nott'm Forest", shortName: "NFO")]
+    func fixture(_ id: Int, home: Int, away: Int, kickoff: Date? = .now, started: Bool = false,
+                 score: (Int, Int)? = nil, minutes: Int? = 0, fullTime: Bool = false) -> Fixture {
+        Fixture(id: id, event: 10, teamH: home, teamA: away, teamHDifficulty: 3, teamADifficulty: 3,
+                kickoffTime: kickoff, started: started, finished: false,
+                teamHScore: score?.0, teamAScore: score?.1, minutes: minutes, finishedProvisional: fullTime)
+    }
+    return List {
+        Section("Upcoming, live, full time") {
+            FixtureRow(fixture: fixture(1, home: 1, away: 2), teams: teams).themedRow()
+            FixtureRow(fixture: fixture(2, home: 2, away: 3, started: true, score: (1, 0), minutes: 67),
+                       teams: teams).themedRow()
+            FixtureRow(fixture: fixture(3, home: 3, away: 1, started: true, score: (2, 2), minutes: 90, fullTime: true),
+                       teams: teams).themedRow()
+        }
+        Section("Postponed") {
+            FixtureRow(fixture: fixture(4, home: 1, away: 3, kickoff: nil), teams: teams).themedRow()
+        }
+        Section("Empty gameweek") {
+            Text("No matches this gameweek.")
+                .foregroundStyle(.secondary)
+                .frame(minHeight: 44)
+                .themedRow()
+        }
+        Section("Loading") {
+            FixtureRow.placeholder.themedRow()
+        }
+    }
+    .listStyle(.insetGrouped)
+    .themedScreen()
 }

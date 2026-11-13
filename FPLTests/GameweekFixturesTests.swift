@@ -179,6 +179,37 @@ struct GameweekFixturesTests {
         #expect(model.state == .failed)
     }
 
+    @Test(arguments: [CancellationError() as any Error, URLError(.cancelled)])
+    func aCancelledLoadIsntAFailure(error: any Error) async {
+        var cancels = true
+        let model = GameweekFixturesModel { gameweek in
+            if cancels { throw error }
+            return gameweek == 10 ? [Self.played] : [Self.upcoming]
+        }
+        await model.open(current: 10, next: 11)
+        #expect(model.gameweek == 10)
+        #expect(model.state == .loading)
+
+        // Coming back to the tab opens it again, on the next gameweek if this one's over.
+        cancels = false
+        await model.open(current: 10, next: 11)
+        #expect(model.gameweek == 11)
+        #expect(model.state == .loaded)
+    }
+
+    @Test func aCancelledReloadKeepsWhatsShownWithoutFailing() async {
+        var cancels = false
+        let model = GameweekFixturesModel { _ in
+            if cancels { throw CancellationError() }
+            return [Self.live]
+        }
+        await model.select(10)
+        cancels = true
+        #expect(await model.reload())
+        #expect(model.state == .loaded)
+        #expect(model.fixtures == [Self.live])
+    }
+
     @Test func aFailedReloadKeepsWhatsShown() async {
         var fails = false
         let model = GameweekFixturesModel { _ in

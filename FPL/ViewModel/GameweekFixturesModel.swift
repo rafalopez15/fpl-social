@@ -25,6 +25,12 @@ final class GameweekFixturesModel: ObservableObject {
     private var loaded: [Int: [Fixture]] = [:]
     /// Counts selections, so only the newest one's answer is shown.
     private var selection = 0
+    /// False until `open` has finished without being cancelled.
+    private var hasOpened = false
+
+    private enum Outcome {
+        case loaded, failed, cancelled
+    }
 
     init(client: FPLAPIClient = FPLAPIClient()) {
         load = { try await client.fixtures(gameweek: $0) }
@@ -36,22 +42,31 @@ final class GameweekFixturesModel: ObservableObject {
     }
 
     /// Picks the gameweek to start on, once: `current`, or `next` when every match
-    /// of `current` has been played.
+    /// of `current` has been played. A cancelled call starts again on the next one.
     func open(current: Int, next: Int?) async {
-        guard gameweek == nil else { return }
-        await select(current)
-        guard gameweek == current, state == .loaded else { return }
-        let opening = Fixture.gameweekToOpen(current: current, next: next, currentFixtures: fixtures)
-        if opening != current { await select(opening) }
+        guard !hasOpened else { return }
+        var target = current
+        var outcome = await show(current)
+        if outcome == .loaded, gameweek == current {
+            target = Fixture.gameweekToOpen(current: current, next: next, currentFixtures: fixtures)
+            if target != current { outcome = await show(target) }
+        }
+        // Cancelled with its gameweek still shown, so nothing else is loading it.
+        hasOpened = outcome != .cancelled || gameweek != target
     }
 
     /// Shows `gameweek`: what was loaded before straight away, then the latest.
     func select(_ gameweek: Int) async {
+        await show(gameweek)
+    }
+
+    @discardableResult
+    private func show(_ gameweek: Int) async -> Outcome {
         selection += 1
         self.gameweek = gameweek
         fixtures = loaded[gameweek] ?? []
         state = loaded[gameweek] == nil ? .loading : .loaded
-        await fetch(gameweek, selection: selection)
+        return await fetch(gameweek, selection: selection)
     }
 
     /// Loads the gameweek shown again. False if it failed, which keeps what's shown.
@@ -59,17 +74,19 @@ final class GameweekFixturesModel: ObservableObject {
     func reload() async -> Bool {
         guard let gameweek else { return true }
         if state == .failed { state = .loading }
-        return await fetch(gameweek, selection: selection)
+        return await fetch(gameweek, selection: selection) != .failed
     }
 
-    @discardableResult
-    private func fetch(_ gameweek: Int, selection: Int) async -> Bool {
+    private func fetch(_ gameweek: Int, selection: Int) async -> Outcome {
         do {
             show(try await load(gameweek), for: gameweek, selection: selection)
-            return true
+            return .loaded
+        } catch where error is CancellationError || (error as? URLError)?.code == .cancelled {
+            // Not an answer about the gameweek: it stays as it was.
+            return .cancelled
         } catch {
             if selection == self.selection, loaded[gameweek] == nil { state = .failed }
-            return false
+            return .failed
         }
     }
 

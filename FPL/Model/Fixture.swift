@@ -44,6 +44,8 @@ extension Fixture {
         case postponed
     }
 
+    /// Only for `/events/{gw}/fixtures`: the stored list has no `finishedProvisional`,
+    /// so its matches would read as live until `finished`, a day or more after full time.
     var matchState: MatchState {
         guard kickoffTime != nil else { return .postponed }
         if finishedProvisional == true || finished { return .finished }
