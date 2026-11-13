@@ -48,6 +48,12 @@ struct ContractTests {
         _ = try Self.decode([Fixture].self, from: "fixtures")
     }
 
+    @Test func gameweekFixtures() throws {
+        let fixtures = try Self.decode([Fixture].self, from: "event-fixtures")
+        // Only this endpoint sends them, and the Gameweek tab needs both.
+        #expect(fixtures.allSatisfy { $0.minutes != nil && $0.finishedProvisional != nil })
+    }
+
     @Test func events() throws {
         let events = try Self.decode([Event].self, from: "events")
         #expect(events.count == 38)

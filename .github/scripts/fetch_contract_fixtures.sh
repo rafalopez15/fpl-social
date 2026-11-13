@@ -42,7 +42,7 @@ fetch() {
 }
 
 fetch events events
-# The live endpoint needs a gameweek; the current one (or the next, before the season) has data.
+# The live endpoints need a gameweek; the current one (or the next, before the season) has data.
 gameweek=$(jq -r '(map(select(.is_current)) + map(select(.is_next)) + [{id: 1}])[0].id' "$out/events.json")
 
 fetch elements elements
@@ -51,6 +51,7 @@ fetch elements-position elements/position/1
 fetch teams teams
 fetch fixtures "fixtures?started=false"
 fetch live "events/$gameweek/live"
+fetch event-fixtures "events/$gameweek/fixtures"
 fetch manager "managers/$manager"
 fetch transfers "managers/$manager/transfers"
 fetch history "managers/$manager/history"

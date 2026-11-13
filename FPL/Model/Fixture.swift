@@ -5,7 +5,8 @@
 
 import Foundation
 
-/// A Premier League match from `GET /api/fixtures`.
+/// A Premier League match from `GET /api/fixtures`, or live from
+/// `GET /api/events/{gw}/fixtures`.
 struct Fixture: Codable, Identifiable, Hashable {
     let id: Int
     /// Gameweek. Nil while a postponed match hasn't been rescheduled.
@@ -26,6 +27,61 @@ struct Fixture: Codable, Identifiable, Hashable {
     let finished: Bool
     let teamHScore: Int?
     let teamAScore: Int?
+    /// Minutes played. Only the live endpoint sends it.
+    var minutes: Int? = nil
+    /// True at full time, a day or more before `finished`. Only the live endpoint sends it.
+    var finishedProvisional: Bool? = nil
+}
+
+// MARK: - A gameweek's matches
+
+extension Fixture {
+    enum MatchState: Equatable {
+        case notStarted
+        case live(minute: Int)
+        case finished
+        /// No kickoff time yet.
+        case postponed
+    }
+
+    var matchState: MatchState {
+        guard kickoffTime != nil else { return .postponed }
+        if finishedProvisional == true || finished { return .finished }
+        return started ? .live(minute: minutes ?? 0) : .notStarted
+    }
+
+    /// True once every match with a kickoff time is over. False with none.
+    static func allPlayed(_ fixtures: [Fixture]) -> Bool {
+        let scheduled = fixtures.filter { $0.kickoffTime != nil }
+        return !scheduled.isEmpty && scheduled.allSatisfy { $0.matchState == .finished }
+    }
+
+    /// The gameweek the Gameweek tab opens on: the current one, or the next once
+    /// every match of the current one has been played.
+    static func gameweekToOpen(current: Int, next: Int?, currentFixtures: [Fixture]) -> Int {
+        guard let next, allPlayed(currentFixtures) else { return current }
+        return next
+    }
+}
+
+/// One day's matches in a gameweek, in kickoff order.
+struct FixtureDay: Identifiable, Equatable {
+    /// The start of the day in the user's time zone.
+    let day: Date
+    let fixtures: [Fixture]
+
+    var id: Date { day }
+
+    /// Matches grouped by the day they kick off in `calendar`'s time zone, earliest
+    /// first, and the postponed ones (no kickoff time) apart.
+    static func days(for fixtures: [Fixture], calendar: Calendar = .current) -> (days: [FixtureDay], postponed: [Fixture]) {
+        let scheduled = fixtures.filter { $0.kickoffTime != nil }
+            .sorted { ($0.kickoffTime!, $0.id) < ($1.kickoffTime!, $1.id) }
+        let days = Dictionary(grouping: scheduled) { calendar.startOfDay(for: $0.kickoffTime!) }
+            .map { FixtureDay(day: $0.key, fixtures: $0.value) }
+            .sorted { $0.day < $1.day }
+        return (days, fixtures.filter { $0.kickoffTime == nil })
+    }
 }
 
 /// A gameweek from `GET /api/events`. Only the fields the app uses are decoded.
