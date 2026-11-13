@@ -123,8 +123,8 @@ struct FPLAPIClient: NotesAPI, TeamsAPI {
     }
 
     /// `GET /api/events/{gw}/fixtures`: a gameweek's matches by kickoff, live from FPL,
-    /// with scores and minutes during play. 404 for a gameweek FPL has no matches for;
-    /// 503 when FPL is down with no saved copy.
+    /// with scores and minutes during play. `[]` when every match is postponed;
+    /// 404 when the gameweek doesn't exist; 503 when FPL is down with no saved copy.
     func fixtures(gameweek: Int) async throws -> [Fixture] {
         try await get("events/\(gameweek)/fixtures")
     }
