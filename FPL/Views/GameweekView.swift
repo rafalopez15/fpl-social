@@ -40,7 +40,9 @@ struct GameweekView: View {
             }
             .themedScreen()
             .sheet(item: $teamShown) { team in
-                TeamFixturesSheet(team: team, fixtures: lookups.schedule?.next(for: team.id) ?? [], teams: lookups.teams)
+                TeamFixturesSheet(team: team, teams: lookups.teams,
+                                  fixtures: lookups.scheduleFailed ? nil : lookups.schedule?.next(for: team.id) ?? [],
+                                  retry: { await lookups.loadIfNeeded() })
                     .presentationDetents([.medium])
                     .presentationDragIndicator(.visible)
                     .presentationBackground(Theme.background)

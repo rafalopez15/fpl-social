@@ -267,8 +267,10 @@ private struct YourPlayersList: View {
 /// A team's next matches: gameweek and date, opponent, and FPL's difficulty.
 struct TeamFixturesSheet: View {
     let team: Team
-    let fixtures: [NextFixture]
     let teams: [Int: Team]
+    /// Nil when the schedule couldn't load.
+    let fixtures: [NextFixture]?
+    let retry: () async -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -280,10 +282,10 @@ struct TeamFixturesSheet: View {
             .accessibilityElement(children: .combine)
             .accessibilityAddTraits(.isHeader)
 
-            if fixtures.isEmpty {
+            if let fixtures, fixtures.isEmpty {
                 Text("No upcoming fixtures.")
                     .foregroundStyle(.secondary)
-            } else {
+            } else if let fixtures {
                 Text(fixtures.count == 1 ? "NEXT FIXTURE" : "NEXT \(fixtures.count) FIXTURES")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
@@ -292,6 +294,14 @@ struct TeamFixturesSheet: View {
                         row(fixture)
                     }
                 }
+            } else {
+                HStack {
+                    Text("Couldn't load fixtures")
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    Button("Retry") { Task { await retry() } }
+                }
+                .frame(minHeight: 44)
             }
             Spacer(minLength: 0)
         }
