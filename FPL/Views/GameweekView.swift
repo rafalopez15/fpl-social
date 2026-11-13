@@ -94,8 +94,11 @@ struct GameweekView: View {
                         .listRowBackground(Color.clear)
                         .accessibilityLabel("Refreshing")
                 }
-                header(gameweek)
-                    .themedRow()
+                // Each minute, for the countdown.
+                TimelineView(.everyMinute) { timeline in
+                    header(gameweek, now: timeline.date)
+                }
+                .themedRow()
                 if let staleAsOf = model.staleAsOf {
                     Label(Self.staleLine(asOf: staleAsOf), systemImage: "arrow.triangle.2.circlepath")
                         .font(.footnote)
@@ -178,12 +181,11 @@ struct GameweekView: View {
     }
 
     /// The gameweek centered between the arrows. Tapping it lists every gameweek.
-    private func header(_ gameweek: Int) -> some View {
+    private func header(_ gameweek: Int, now: Date) -> some View {
         let last = max(gameweeks.events.map(\.id).max() ?? gameweek, gameweek)
         let dates = Self.dates(of: model.fixtures)
-        // Only one still to come: a past gameweek's deadline says nothing.
-        let deadline = gameweeks.deadline(for: gameweek).flatMap { $0 > .now ? $0 : nil }?
-            .formatted(.dateTime.weekday(.abbreviated).day().month(.abbreviated).hour().minute())
+        // The next deadline whichever gameweek is shown; nil after the season's last.
+        let countdown = DeadlineCountdown.next(in: gameweeks.events, now: now)
         return HStack(spacing: 0) {
             arrow("chevron.left", label: "Previous gameweek", to: gameweek - 1, last: last)
 
@@ -204,10 +206,10 @@ struct GameweekView: View {
                             .font(.subheadline)
                             .foregroundStyle(Theme.text)
                     }
-                    if let deadline {
-                        Text("Deadline \(deadline)")
-                            .font(.footnote)
-                            .foregroundStyle(Theme.secondaryText)
+                    if let countdown {
+                        Text(countdown.text(now: now))
+                            .font(.footnote.monospacedDigit())
+                            .foregroundStyle(countdown.isSoon(now: now) ? Theme.warning : Theme.secondaryText)
                     }
                 }
                 .multilineTextAlignment(.center)
@@ -215,7 +217,7 @@ struct GameweekView: View {
                 .contentShape(Rectangle())
             }
             .accessibilityLabel("Gameweek \(gameweek)")
-            .accessibilityValue([dates, deadline.map { "deadline \($0)" }].compactMap { $0 }.joined(separator: ", "))
+            .accessibilityValue([dates, countdown?.spokenText(now: now)].compactMap { $0 }.joined(separator: ", "))
             .accessibilityHint("Choose a gameweek")
             .accessibilityAddTraits(.isHeader)
             .accessibilityAdjustableAction { direction in
