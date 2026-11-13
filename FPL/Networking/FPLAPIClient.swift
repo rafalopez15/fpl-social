@@ -122,6 +122,13 @@ struct FPLAPIClient: NotesAPI, TeamsAPI {
         try await get("events/\(gameweek)/live")
     }
 
+    /// `GET /api/events/{gw}/fixtures`: a gameweek's matches by kickoff, live from FPL,
+    /// with scores and minutes during play. `[]` when every match is postponed;
+    /// 404 when the gameweek doesn't exist; 503 when FPL is down with no saved copy.
+    func fixtures(gameweek: Int) async throws -> [Fixture] {
+        try await get("events/\(gameweek)/fixtures")
+    }
+
     /// `GET /api/leagues/{id}?page=`: a classic league's standings, 50 teams a page.
     /// 404 for an unknown or head-to-head league; 503 when FPL is down or updating.
     func league(id: Int, page: Int = 1) async throws -> LeagueStandings {

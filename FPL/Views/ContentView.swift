@@ -11,13 +11,14 @@ import SwiftUI
 
 /// The app's top-level tabs. Each tab owns its own NavigationStack.
 enum AppTab: CaseIterable, Identifiable {
-    case profile, feed, notes
+    case profile, gameweek, feed, notes
 
     var id: Self { self }
 
     var title: String {
         switch self {
         case .profile: "Profile"
+        case .gameweek: "Gameweek"
         case .feed: "Feed"
         case .notes: "Notes"
         }
@@ -26,6 +27,7 @@ enum AppTab: CaseIterable, Identifiable {
     var systemImage: String {
         switch self {
         case .profile: "person.crop.circle"
+        case .gameweek: "calendar"
         case .feed: "house"
         case .notes: "note.text"
         }
@@ -107,6 +109,7 @@ struct ContentView: View {
     private func content(for tab: AppTab) -> some View {
         switch tab {
         case .profile: ProfileView()
+        case .gameweek: GameweekView(isSelected: selection == .gameweek)
         case .feed: FeedView()
         case .notes: NotesView()
         }

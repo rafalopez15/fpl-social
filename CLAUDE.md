@@ -2,7 +2,7 @@
 
 SwiftUI iOS app for Fantasy Premier League. It never calls FPL directly: everything goes through **fplAPI** (separate repo) under `/api`. FPL calls players "elements", and the code keeps that name.
 
-Rules for one area load from `.claude/rules/` when you open its files: `ui.md`, `notes.md`, `accounts.md`, `teams.md`, `data.md`, `tests.md`, `ci.md`. How-tos for people are in `README.md`. Decisions and their history are in Linear: the "iOS app: design decisions" doc and each story.
+Rules for one area load from `.claude/rules/` when you open its files: `ui.md`, `gameweek.md`, `notes.md`, `accounts.md`, `teams.md`, `data.md`, `tests.md`, `ci.md`. How-tos for people are in `README.md`. Decisions and their history are in Linear: the "iOS app: design decisions" doc and each story.
 
 ## Build and test
 

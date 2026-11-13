@@ -23,6 +23,7 @@ final class FixtureServer: @unchecked Sendable {
         (#"^/api/fixtures$"#, "fixtures"),
         (#"^/api/events$"#, "events"),
         (#"^/api/events/\d+/live$"#, "live"),
+        (#"^/api/events/\d+/fixtures$"#, "event-fixtures"),
         (#"^/api/managers/\d+$"#, "manager"),
         (#"^/api/managers/\d+/transfers$"#, "transfers"),
         (#"^/api/managers/\d+/history$"#, "history"),
