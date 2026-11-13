@@ -58,6 +58,24 @@ final class FPLUITests: XCTestCase {
     }
 
     @MainActor
+    func testOpeningAPlayerFromAllPlayers() throws {
+        let player = try Fixtures.topPlayer()
+        let allPlayers = app.buttons["All players"]
+        XCTAssertTrue(allPlayers.waitForExistence(timeout: 10))
+        // The list loads when it's opened, not at launch.
+        XCTAssertEqual(playerListRequests, 0)
+        allPlayers.tap()
+        let info = app.buttons.matching(NSPredicate(format: "label IN %@",
+                                                    ["Stats for \(player)", "Stats and news for \(player)"])).firstMatch
+        XCTAssertTrue(info.waitForExistence(timeout: 10))
+        XCTAssertEqual(playerListRequests, 1)
+        XCTAssertTrue(app.searchFields.firstMatch.exists)
+        XCTAssertTrue(app.navigationBars.buttons["Profile"].exists)
+        info.tap()
+        XCTAssertTrue(app.buttons["Add note about \(player)"].waitForExistence(timeout: 5))
+    }
+
+    @MainActor
     func testWritingANote() throws {
         let gameweek = try Fixtures.currentGameweek()
         app.buttons["Notes"].firstMatch.tap()
@@ -74,17 +92,20 @@ final class FPLUITests: XCTestCase {
         XCTAssertTrue(row.waitForExistence(timeout: 5))
     }
 
+    private var playerListRequests: Int {
+        server?.requestedPaths.filter { $0.hasPrefix("/api/elements/position/") }.count ?? 0
+    }
+
     /// The first element whose label contains `text`: cards combine their texts into one label.
     @MainActor
     private func element(labelled text: String) -> XCUIElement {
         app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS %@", text)).firstMatch
     }
 
-    /// Profile, type 1, Find team, check it's the fixture's team, then confirm.
+    /// On Profile, where the app opens: type 1, Find team, check it's the fixture's team, then confirm.
     @MainActor
     private func linkManager1() throws {
         let teamName = try Fixtures.teamName()
-        app.buttons["Profile"].firstMatch.tap()
         let field = app.textFields["Manager ID"]
         XCTAssertTrue(field.waitForExistence(timeout: 5))
         field.tap()
@@ -120,6 +141,15 @@ private enum Fixtures {
     /// The top team in the standings `FixtureServer` sends for every league.
     static func leagueLeader() throws -> String {
         try XCTUnwrap((object("league")["standings"] as? [[String: Any]])?.first?["entry_name"] as? String)
+    }
+
+    /// The first row of All players: most points, then by name, as the list sorts.
+    static func topPlayer() throws -> String {
+        let players = try array("elements-position")
+            .filter { $0["can_select"] as? Bool != false && $0["removed"] as? Bool != true }
+            .map { (name: $0["web_name"] as? String ?? "", points: $0["total_points"] as? Int ?? 0) }
+        let top = players.min { ($1.points, $0.name) < ($0.points, $1.name) }
+        return try XCTUnwrap(top?.name)
     }
 
     /// The gameweek Notes treats as current: `is_current`, or `is_next` before the season.

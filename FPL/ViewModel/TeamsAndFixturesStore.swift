@@ -10,7 +10,7 @@ import Foundation
 /// a failure only hides team names or fixtures, and the next `loadIfNeeded()` tries again.
 @MainActor
 final class TeamsAndFixturesStore: ObservableObject {
-    /// The Players tab and Profile's squad both read this one.
+    /// The players list and Profile's squad both read this one.
     static let shared = TeamsAndFixturesStore()
 
     @Published private(set) var teams: [Int: Team] = [:]
