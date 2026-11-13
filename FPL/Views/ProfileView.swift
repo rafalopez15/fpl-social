@@ -8,7 +8,7 @@ import SwiftUI
 
 /// The Profile tab: link your FPL team by manager ID, then see it with options
 /// to change or unlink it. The Account card under it signs you in or out, and
-/// signed in, Following lists the teams you follow.
+/// signed in, Following lists the teams you follow. All players opens the players list.
 struct ProfileView: View {
     @EnvironmentObject private var teamStore: LinkedTeamStore
     @EnvironmentObject private var teamSync: TeamSync
@@ -23,6 +23,9 @@ struct ProfileView: View {
     /// the current one stays until a new one is confirmed.
     @State private var isChanging = false
     @State private var confirmingUnlink = false
+    /// The players list's position and sort, kept while the app is open.
+    @StateObject private var players = ElementViewModel()
+    @State private var showingPlayers = false
 
     private var isSignedIn: Bool { account.userID != nil }
 
@@ -55,6 +58,8 @@ struct ProfileView: View {
 
                         ProfileAccountCard(showsLeagues: true)
 
+                        AllPlayersCard { showingPlayers = true }
+
                         SquadSection(selected: $squadGameweek)
 
                         TransfersSection(managerID: linked.id,
@@ -71,6 +76,8 @@ struct ProfileView: View {
                         }
 
                         ProfileAccountCard(showsLeagues: false)
+
+                        AllPlayersCard { showingPlayers = true }
                     }
                 }
                 .padding(16)
@@ -88,6 +95,11 @@ struct ProfileView: View {
             // Like Notes: the tab bar says where you are, so no title bar.
             .navigationTitle("Profile")
             .toolbar(.hidden, for: .navigationBar)
+            // On the stack rather than a link in a card, so linking or unlinking a team
+            // (which swaps the cards) doesn't close the list.
+            .navigationDestination(isPresented: $showingPlayers) {
+                PlayersView(viewModel: players)
+            }
             .confirmationDialog("Unlink \(teamStore.linked?.teamName ?? "team")?",
                                 isPresented: $confirmingUnlink, titleVisibility: .visible) {
                 Button("Unlink team", role: .destructive) { Task { await teamSync.unlink() } }
@@ -154,7 +166,7 @@ enum ProfileRefresh {
         async let gameweeksLoaded = gameweeks.reload()
         async let teamLoaded = team.refresh(viewing: gameweek)
         let (gameweeksOK, teamOK) = await (gameweeksLoaded, teamLoaded)
-        return gameweeksOK && teamOK ? nil : Toast(message: failedMessage)
+        return gameweeksOK && teamOK ? nil : Toast(failedMessage, style: .warning)
     }
 }
 

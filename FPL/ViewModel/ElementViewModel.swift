@@ -40,6 +40,13 @@ class ElementViewModel: ObservableObject {
         self.lookups = lookups
     }
 
+    /// Loads the position's players unless they're already shown, so reopening the list
+    /// doesn't fetch them again.
+    func loadIfNeeded() async {
+        guard elements.isEmpty else { return }
+        await fetchElements()
+    }
+
     func fetchElements() async {
         fetchGeneration += 1
         let generation = fetchGeneration

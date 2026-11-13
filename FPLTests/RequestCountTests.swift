@@ -117,8 +117,7 @@ extension StubbedNetworkTests {
 
         @Test func launchAsksForEachListOnce() async throws {
             // What launch starts at once: the gameweeks, Profile's refresh, the transfer
-            // check, the shared teams and fixtures, and the Players tab.
-            StubURLProtocol.responses["/api/elements/position/4"] = (200, "[]")
+            // check, and the shared teams and fixtures.
             let gameweeks = GameweekStore(client: client)
             let lookups = TeamsAndFixturesStore(client: client, gameweeks: gameweeks)
             let suite = "FPLTests.\(UUID().uuidString)"
@@ -126,17 +125,33 @@ extension StubbedNetworkTests {
             defer { defaults.removePersistentDomain(forName: suite) }
             let store = LinkedTeamStore(defaults: defaults, client: client, lookups: lookups)
             store.link(try ManagerTests.manager())
-            let players = ElementViewModel(position: .forward, client: client, lookups: lookups)
             async let gameweeksLoaded: Void = gameweeks.loadIfNeeded()
             async let refreshed = store.refresh()
             async let checked: Void = store.checkForTransfers()
             async let lookupsLoaded: Void = lookups.loadIfNeeded()
-            async let playersLoaded: Void = players.fetchElements()
-            _ = await (gameweeksLoaded, refreshed, checked, lookupsLoaded, playersLoaded)
+            _ = await (gameweeksLoaded, refreshed, checked, lookupsLoaded)
 
             for (path, count) in StubURLProtocol.requests {
                 #expect(count == 1, "\(path) was requested \(count) times")
             }
+        }
+
+        @Test func reopeningAllPlayersLoadsThemOnce() async {
+            StubURLProtocol.responses["/api/elements/position/4"] = (200, "[\(ElementDecodingTests.fixture)]")
+            StubURLProtocol.responses["/api/elements/position/3"] = (200, "[\(ElementDecodingTests.fixture)]")
+            let lookups = TeamsAndFixturesStore(client: client, gameweeks: GameweekStore(client: client))
+            let players = ElementViewModel(position: .forward, client: client, lookups: lookups)
+            await players.loadIfNeeded()
+            await players.loadIfNeeded()
+            #expect(players.elements.count == 1)
+            #expect(StubURLProtocol.requests["/api/elements/position/4"] == 1)
+
+            // Another position has nothing shown yet, and a pull to refresh always loads.
+            players.position = .midfielder
+            await players.loadIfNeeded()
+            #expect(StubURLProtocol.requests["/api/elements/position/3"] == 1)
+            await players.fetchElements()
+            #expect(StubURLProtocol.requests["/api/elements/position/3"] == 2)
         }
     }
 }

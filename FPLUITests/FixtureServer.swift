@@ -34,6 +34,11 @@ final class FixtureServer: @unchecked Sendable {
     private let queue = DispatchQueue(label: "FixtureServer")
     /// Bodies served in place of a fixture file, by fixture name.
     private let overrides: [String: Data]
+    /// Only touched on `queue`.
+    private var paths: [String] = []
+
+    /// Every path the app has asked for so far, without the query.
+    var requestedPaths: [String] { queue.sync { paths } }
 
     init(overrides: [String: Data] = [:]) throws {
         self.overrides = overrides
@@ -71,6 +76,7 @@ final class FixtureServer: @unchecked Sendable {
             let requestLine = data.flatMap { String(data: $0, encoding: .utf8) }?.split(separator: " ")
             let target = requestLine.map { $0.count > 1 ? String($0[1]) : "/" } ?? "/"
             let path = String(target.split(separator: "?").first ?? "")
+            self?.paths.append(path)
             let (status, body) = self?.response(for: path) ?? (404, Data())
             let head = """
                 HTTP/1.1 \(status) \(status == 200 ? "OK" : "Not Found")\r

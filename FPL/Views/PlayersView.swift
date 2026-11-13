@@ -7,73 +7,76 @@
 
 import SwiftUI
 
-/// The Players tab: players for one position, with search, sort and a price filter.
+/// All players, pushed from Profile: one position at a time, with search and sort.
 struct PlayersView: View {
-    @StateObject private var viewModel = ElementViewModel(position: .forward)
+    /// Owned by Profile, so the position and sort are kept between visits.
+    @ObservedObject var viewModel: ElementViewModel
     /// Teams and fixtures, shared with Profile's squad.
     @ObservedObject private var lookups = TeamsAndFixturesStore.shared
 
     var body: some View {
-        NavigationStack {
-            Group {
-                // Full-screen spinner only when there's nothing to show yet;
-                // pull-to-refresh keeps the list and uses the system spinner.
-                if viewModel.isLoading && viewModel.elements.isEmpty {
-                    ProgressView("Loading...")
-                } else if let errorMessage = viewModel.errorMessage {
-                    VStack(spacing: 12) {
-                        Text(errorMessage)
-                            .foregroundStyle(.red)
-                            .multilineTextAlignment(.center)
-                        Button("Retry") {
-                            Task { await viewModel.fetchElements() }
-                        }
-                    }
-                    .padding()
-                } else {
-                    List(viewModel.filteredElements) { element in
-                        ElementRow(element: element,
-                                   team: lookups.teams[element.team],
-                                   sort: viewModel.sort,
-                                   fixtures: lookups.schedule?.upcoming(for: element.team) ?? [],
-                                   teams: lookups.teams)
-                            .themedRow()
-                    }
-                    .listStyle(.insetGrouped)
-                    // Pull the list up under the search bar; the grouped style's
-                    // default top inset left a large empty band.
-                    .contentMargins(.top, 4, for: .scrollContent)
-                    .refreshable { await viewModel.fetchElements() }
-                }
-            }
-            .themedScreen()
-            // On the Group so search stays put while loading. Always visible:
-            // the tab bar owns the bottom of the screen, so search sits up top.
-            .searchable(text: $viewModel.searchQuery,
-                        placement: .navigationBarDrawer(displayMode: .always),
-                        prompt: "Search \(viewModel.position.title.lowercased())")
-            .navigationTitle(viewModel.position.title)
-            // Inline so the title menu is available without scrolling.
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbarTitleMenu {
-                Picker("Position", selection: $viewModel.position) {
-                    ForEach(Element.Position.allCases, id: \.self) { position in
-                        Text(position.title).tag(position)
+        Group {
+            // Full-screen spinner only when there's nothing to show yet;
+            // pull-to-refresh keeps the list and uses the system spinner.
+            if viewModel.isLoading && viewModel.elements.isEmpty {
+                ProgressView("Loading...")
+            } else if let errorMessage = viewModel.errorMessage {
+                VStack(spacing: 12) {
+                    Text(errorMessage)
+                        .foregroundStyle(.red)
+                        .multilineTextAlignment(.center)
+                    Button("Retry") {
+                        Task { await viewModel.fetchElements() }
                     }
                 }
+                .padding()
+            } else {
+                List(viewModel.filteredElements) { element in
+                    ElementRow(element: element,
+                               team: lookups.teams[element.team],
+                               sort: viewModel.sort,
+                               fixtures: lookups.schedule?.upcoming(for: element.team) ?? [],
+                               teams: lookups.teams)
+                        .themedRow()
+                }
+                .listStyle(.insetGrouped)
+                // Pull the list up under the search bar; the grouped style's
+                // default top inset left a large empty band.
+                .contentMargins(.top, 4, for: .scrollContent)
+                .refreshable { await viewModel.fetchElements() }
             }
-            .toolbar {
-                ToolbarItemGroup(placement: .topBarTrailing) {
-                    sortMenu
-                    sortOrderButton
+        }
+        .themedScreen()
+        // On the Group so search stays put while loading. Always visible:
+        // the tab bar owns the bottom of the screen, so search sits up top.
+        .searchable(text: $viewModel.searchQuery,
+                    placement: .navigationBarDrawer(displayMode: .always),
+                    prompt: "Search \(viewModel.position.title.lowercased())")
+        .navigationTitle(viewModel.position.title)
+        // Inline so the title menu is available without scrolling.
+        .navigationBarTitleDisplayMode(.inline)
+        // Profile hides its bar; this page needs one for Back, search and sort.
+        .toolbar(.visible, for: .navigationBar)
+        .toolbarTitleMenu {
+            Picker("Position", selection: $viewModel.position) {
+                ForEach(Element.Position.allCases, id: \.self) { position in
+                    Text(position.title).tag(position)
                 }
             }
         }
-        // Runs on appear and again whenever the position changes,
+        .toolbar {
+            ToolbarItemGroup(placement: .topBarTrailing) {
+                sortMenu
+                sortOrderButton
+            }
+        }
+        // Runs on opening and again whenever the position changes,
         // cancelling any fetch still in flight.
         .task(id: viewModel.position) {
-            await viewModel.fetchElements()
+            await viewModel.loadIfNeeded()
         }
+        // The search starts empty on the next visit.
+        .onDisappear { viewModel.searchQuery = "" }
     }
 
     /// Dropdown of sort fields; the current one has a checkmark.
@@ -174,8 +177,35 @@ private struct ElementRow: View {
 }
 
 #Preview {
-    PlayersView()
-        .environmentObject(LinkedTeamStore())
-        .environmentObject(NoteSync.preview)
-        .modelContainer(NoteSync.preview.container)
+    NavigationStack {
+        PlayersView(viewModel: ElementViewModel())
+    }
+    .environmentObject(LinkedTeamStore())
+    .environmentObject(NoteSync.preview)
+    .modelContainer(NoteSync.preview.container)
+}
+
+/// Profile's All players row, in a card of its own.
+struct AllPlayersCard: View {
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack {
+                Text("All players")
+                    .font(.body.weight(.semibold))
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .accessibilityHidden(true)
+            }
+            .frame(minHeight: 44)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 4)
+        .background(Theme.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
 }
