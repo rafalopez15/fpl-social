@@ -8,7 +8,7 @@ import SwiftUI
 /// Profile's "Your squad": the starting XI by position and the bench, as of the
 /// latest deadline (FPL-36), with points (FPL-37). A stepper in the header goes
 /// back through earlier gameweeks. Tapping a player opens the same stats popover
-/// as the Players tab.
+/// as the players list.
 struct SquadSection: View {
     @EnvironmentObject private var teamStore: LinkedTeamStore
     @ObservedObject private var lookups = TeamsAndFixturesStore.shared
@@ -269,7 +269,7 @@ private struct SquadRow: View {
                     .font(.title3)
                     .foregroundStyle(Theme.accent)
                     .accessibilityHidden(true)
-                    // Anchored on the icon, as on the Players tab, so iOS can place
+                    // Anchored on the icon, as in the players list, so iOS can place
                     // the popover beside the row wherever it fits on screen.
                     .statsPopover(isPresented: $showingStats, element: element, team: team,
                                   fixtures: fixtures, teams: teams, showsStats: false)
