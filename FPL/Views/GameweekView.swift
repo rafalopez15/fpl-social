@@ -85,8 +85,9 @@ struct GameweekView: View {
     }
 
     private func row(_ fixture: Fixture) -> some View {
-        // The latest squad, whichever gameweek is shown. Nil with no team or squad.
-        let squad: ManagerPicks? = if case .loaded(let picks) = linkedTeam.squad { picks } else { nil }
+        // The latest squad, from its own gameweek on. Nil with no team or squad.
+        let squad: ManagerPicks? = if case .loaded(let picks) = linkedTeam.squad,
+                                      model.gameweek.map(picks.applies) ?? true { picks } else { nil }
         return FixtureRow(fixture: fixture, teams: lookups.teams, isStale: model.staleAsOf != nil,
                           yourPlayers: squad?.players(in: fixture, from: linkedTeam.players),
                           onTeam: { teamShown = $0 })

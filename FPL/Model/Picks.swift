@@ -44,6 +44,13 @@ struct ManagerPicks: Decodable, Equatable {
         }
     }
 
+    /// False for a gameweek before this squad's: you may have had other players then.
+    /// True when the squad's gameweek isn't known.
+    func applies(to gameweek: Int) -> Bool {
+        guard let event = entryHistory?.event else { return true }
+        return gameweek >= event
+    }
+
     /// A pick with its player.
     struct SquadPlayer: Identifiable, Equatable {
         let pick: Pick

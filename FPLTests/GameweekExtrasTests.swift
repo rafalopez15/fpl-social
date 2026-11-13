@@ -42,6 +42,14 @@ struct GameweekExtrasTests {
         #expect(squad.players(in: Base.upcoming, from: players).map(\.id) == [7, 10])
     }
 
+    @Test func aSquadDoesntCountForEarlierGameweeks() {
+        let squad = ManagerPicks(picks: [], entryHistory: .init(event: 10))
+        #expect(!squad.applies(to: 9))
+        #expect(squad.applies(to: 10))
+        #expect(squad.applies(to: 11))
+        #expect(ManagerPicks(picks: []).applies(to: 1))
+    }
+
     // MARK: A team's next fixtures
 
     @Test func aTeamsNextFixturesAreTheSoonestStillToKickOff() throws {
