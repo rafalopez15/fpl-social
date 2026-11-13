@@ -16,7 +16,6 @@ struct GameweekView: View {
     @EnvironmentObject private var linkedTeam: LinkedTeamStore
     @ObservedObject private var lookups = TeamsAndFixturesStore.shared
     @StateObject private var model = GameweekFixturesModel()
-    @State private var toast: Toast?
     @State private var isRefreshing = false
     /// The team whose next fixtures are up.
     @State private var teamShown: Team?
@@ -40,7 +39,6 @@ struct GameweekView: View {
                 }
             }
             .themedScreen()
-            .toast($toast)
             .sheet(item: $teamShown) { team in
                 TeamFixturesSheet(team: team, fixtures: lookups.schedule?.next(for: team.id) ?? [], teams: lookups.teams)
                     .presentationDetents([.medium])
@@ -139,8 +137,8 @@ struct GameweekView: View {
         .refreshable {
             isRefreshing = true
             // Its own task: SwiftUI cancels the action's when the list redraws mid-load.
-            let reloaded = await Task { await model.reload() }.value
-            if !reloaded { toast = Toast(ProfileRefresh.failedMessage, style: .warning) }
+            // A failure shows the "Couldn't update" row, not a toast.
+            await Task { await model.reload() }.value
             isRefreshing = false
         }
     }
