@@ -79,10 +79,45 @@ struct GameweekLiveTests {
         #expect(model.refreshDelay(now: clock) == nil)
     }
 
-    @Test func upcomingAndPostponedMatchesDontRefresh() async {
-        let model = GameweekFixturesModel { _ in [Base.upcoming, Base.postponed, Base.played] }
+    @Test func playedAndPostponedMatchesDontRefresh() async {
+        let model = GameweekFixturesModel { _ in [Base.postponed, Base.played] }
         await model.select(10)
         #expect(!model.refreshesItself)
+        #expect(model.refreshDelay() == nil)
+    }
+
+    @Test func waitsForTheNextKickoffThenReloadsEveryMinute() async {
+        // `upcoming` kicks off at 15:00; a later match at 17:30.
+        var clock = Base.time(hour: 14, minute: 50)
+        let later = Base.fixture(5, kickoff: Base.time(hour: 17, minute: 30))
+        var fixtures = [Base.played, later, Base.upcoming, Base.postponed]
+        let model = GameweekFixturesModel(now: { clock }, load: { _ in fixtures })
+        await model.select(10)
+        #expect(model.refreshesItself)
+        #expect(model.refreshDelay(now: clock) == 600)
+
+        // At kickoff FPL hasn't said it started yet: every minute until it does.
+        clock = Base.time(hour: 15)
+        await model.reload()
+        #expect(model.refreshDelay(now: clock) == 60)
+
+        clock += 60
+        fixtures = [Base.played, later, Base.fixture(3, started: true, score: (0, 0), minutes: 1), Base.postponed]
+        await model.reload()
+        #expect(model.refreshDelay(now: clock) == 60)
+
+        // Full time, with the evening match still to come: wait for that one.
+        clock = Base.time(hour: 17)
+        fixtures = [Base.played, later, Base.played, Base.postponed]
+        await model.reload()
+        #expect(model.refreshDelay(now: clock) == 1_800)
+    }
+
+    @Test func neverWaitsLessThanAMinuteForAKickoff() async {
+        let clock = Base.time(hour: 14, minute: 59, second: 30)
+        let model = GameweekFixturesModel(now: { clock }, load: { _ in [Base.upcoming] })
+        await model.select(10)
+        #expect(model.refreshDelay(now: clock) == 60)
     }
 
     @Test func aSavedCopyKeepsRefreshingWithNoMatchLive() async {

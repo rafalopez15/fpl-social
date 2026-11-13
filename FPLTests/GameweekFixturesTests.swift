@@ -14,10 +14,11 @@ struct GameweekFixturesTests {
     static let utc = TimeZone(identifier: "UTC")!
 
     /// A time on 7 November 2026, UTC.
-    static func time(day: Int = 7, hour: Int, minute: Int = 0) -> Date {
+    static func time(day: Int = 7, hour: Int, minute: Int = 0, second: Int = 0) -> Date {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = utc
-        return calendar.date(from: DateComponents(year: 2026, month: 11, day: day, hour: hour, minute: minute))!
+        return calendar.date(from: DateComponents(year: 2026, month: 11, day: day, hour: hour, minute: minute,
+                                                  second: second))!
     }
 
     static func fixture(_ id: Int, kickoff: Date? = time(hour: 15), started: Bool = false, finished: Bool = false,

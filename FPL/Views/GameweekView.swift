@@ -61,16 +61,17 @@ struct GameweekView: View {
             await model.open(current: current, next: gameweeks.events.first(where: \.isNext)?.id)
             await teams
         }
-        // Only while the tab is on screen and a match is live, or FPL is down.
+        // Only while the tab is on screen and a match is live or still to come, or FPL is down.
         .task(id: RefreshKey(isOn: isSelected && scenePhase == .active && model.refreshesItself,
                              gameweek: model.gameweek)) {
             guard isSelected, scenePhase == .active else { return }
-            await refreshWhileLive()
+            await refreshItself()
         }
     }
 
-    /// Reloads the gameweek a minute after its last load, for as long as this runs.
-    private func refreshWhileLive() async {
+    /// Reloads the gameweek a minute after its last load, or at the next kickoff, for as
+    /// long as this runs.
+    private func refreshItself() async {
         while let delay = model.refreshDelay() {
             try? await Task.sleep(for: .seconds(delay))
             if Task.isCancelled { return }

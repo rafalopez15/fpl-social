@@ -29,18 +29,30 @@ final class GameweekFixturesModel: ObservableObject {
     /// How often the gameweek shown reloads itself: the endpoint's cache time.
     nonisolated static let refreshInterval: TimeInterval = 60
 
-    /// True while the fixtures shown can change by the minute: a match is live, or
-    /// they're a saved copy that FPL coming back replaces.
+    /// True while the fixtures shown can still change: a match is live or still to kick
+    /// off, or they're a saved copy that FPL coming back replaces.
     var refreshesItself: Bool {
-        staleAsOf != nil || fixtures.contains { if case .live = $0.matchState { true } else { false } }
+        staleAsOf != nil || fixtures.contains {
+            switch $0.matchState {
+            case .live, .notStarted: true
+            case .finished, .postponed: false
+            }
+        }
     }
 
     /// Seconds until the gameweek shown should reload: `refreshInterval` after its last
-    /// load started, 0 if that's past. Nil when it doesn't reload itself.
+    /// load started (0 if that's past) while a match is live, or has kicked off without
+    /// FPL saying so yet; otherwise at the next kickoff. Nil when it doesn't reload itself.
     func refreshDelay(now: Date = .now) -> TimeInterval? {
         guard refreshesItself else { return nil }
-        guard let lastFetch else { return 0 }
-        return max(0, Self.refreshInterval - now.timeIntervalSince(lastFetch))
+        let afterLastLoad = lastFetch.map { max(0, Self.refreshInterval - now.timeIntervalSince($0)) } ?? 0
+        let nextKickoff = fixtures.lazy
+            .filter { $0.matchState == .notStarted }
+            .compactMap(\.kickoffTime)
+            .min()
+        let isLive = fixtures.contains { if case .live = $0.matchState { true } else { false } }
+        guard staleAsOf == nil, !isLive, let nextKickoff, nextKickoff > now else { return afterLastLoad }
+        return max(afterLastLoad, nextKickoff.timeIntervalSince(now))
     }
 
     private let now: () -> Date
