@@ -18,6 +18,8 @@ struct GameweekView: View {
     @StateObject private var model = GameweekFixturesModel()
     @State private var toast: Toast?
     @State private var isRefreshing = false
+    /// The team whose next fixtures are up.
+    @State private var teamShown: Team?
 
     var body: some View {
         NavigationStack {
@@ -39,6 +41,12 @@ struct GameweekView: View {
             }
             .themedScreen()
             .toast($toast)
+            .sheet(item: $teamShown) { team in
+                TeamFixturesSheet(team: team, fixtures: lookups.schedule?.next(for: team.id) ?? [], teams: lookups.teams)
+                    .presentationDetents([.medium])
+                    .presentationDragIndicator(.visible)
+                    .presentationBackground(Theme.background)
+            }
             // Like Notes and Profile: the tab bar says where you are, so no title bar.
             .navigationTitle("Gameweek")
             .toolbar(.hidden, for: .navigationBar)
@@ -79,7 +87,8 @@ struct GameweekView: View {
         // The latest squad, whichever gameweek is shown. Nil with no team or squad.
         let squad: ManagerPicks? = if case .loaded(let picks) = linkedTeam.squad { picks } else { nil }
         return FixtureRow(fixture: fixture, teams: lookups.teams, isStale: model.staleAsOf != nil,
-                          yourPlayers: squad?.players(in: fixture, from: linkedTeam.players))
+                          yourPlayers: squad?.players(in: fixture, from: linkedTeam.players),
+                          onTeam: { teamShown = $0 })
             .themedRow()
     }
 

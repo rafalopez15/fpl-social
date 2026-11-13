@@ -149,18 +149,38 @@ struct FixtureSchedule {
         guard end >= nextGameweek else { return [] }
 
         return (nextGameweek...end).map { gameweek in
-            let fixtures = (fixturesByGameweek[gameweek] ?? []).compactMap { fixture -> TeamFixture? in
-                if fixture.teamH == team {
-                    return TeamFixture(id: fixture.id, opponent: fixture.teamA, isHome: true,
-                                       difficulty: fixture.teamHDifficulty)
-                }
-                if fixture.teamA == team {
-                    return TeamFixture(id: fixture.id, opponent: fixture.teamH, isHome: false,
-                                       difficulty: fixture.teamADifficulty)
-                }
-                return nil
-            }
+            let fixtures = (fixturesByGameweek[gameweek] ?? []).compactMap { $0.side(of: team) }
             return GameweekFixtures(gameweek: gameweek, fixtures: fixtures)
         }
+    }
+
+    /// The team's next `count` matches still to kick off, soonest first, the current
+    /// gameweek's included. A double gameweek counts as two.
+    func next(_ count: Int = 5, for team: Int) -> [NextFixture] {
+        fixturesByGameweek.values.joined()
+            .sorted { ($0.kickoffTime ?? .distantFuture, $0.id) < ($1.kickoffTime ?? .distantFuture, $1.id) }
+            .compactMap { fixture in
+                guard let side = fixture.side(of: team), let gameweek = fixture.event else { return nil }
+                return NextFixture(gameweek: gameweek, kickoffTime: fixture.kickoffTime, fixture: side)
+            }
+            .prefix(count).map { $0 }
+    }
+}
+
+/// One of a team's coming matches, with its gameweek and kickoff.
+struct NextFixture: Identifiable, Hashable {
+    let gameweek: Int
+    let kickoffTime: Date?
+    let fixture: TeamFixture
+
+    var id: Int { fixture.id }
+}
+
+extension Fixture {
+    /// The match from `team`'s side. Nil if `team` isn't playing in it.
+    func side(of team: Int) -> TeamFixture? {
+        if teamH == team { return TeamFixture(id: id, opponent: teamA, isHome: true, difficulty: teamHDifficulty) }
+        if teamA == team { return TeamFixture(id: id, opponent: teamH, isHome: false, difficulty: teamADifficulty) }
+        return nil
     }
 }

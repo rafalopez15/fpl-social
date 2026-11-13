@@ -13,6 +13,8 @@ struct FixtureRow: View {
     var isStale = false
     /// Your squad's players in this match. Nil without a squad, which leaves no room for a count.
     var yourPlayers: [ManagerPicks.SquadPlayer]?
+    /// Called with the team whose name was tapped. Nil leaves names as plain text.
+    var onTeam: ((Team) -> Void)?
     @State private var showsYourPlayers = false
     @ScaledMetric(relativeTo: .caption) private var countWidth: CGFloat = 34
 
@@ -78,7 +80,7 @@ struct FixtureRow: View {
 
     private var match: some View {
         HStack(spacing: 10) {
-            HStack(spacing: 8) {
+            side(home) {
                 name(home, alignment: .trailing)
                 ClubDot(team: home)
             }
@@ -87,7 +89,7 @@ struct FixtureRow: View {
             middle
                 .frame(minWidth: 70)
 
-            HStack(spacing: 8) {
+            side(away) {
                 ClubDot(team: away)
                 name(away, alignment: .leading)
             }
@@ -96,6 +98,29 @@ struct FixtureRow: View {
         .frame(minHeight: 52)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(Self.description(of: fixture, home: home?.name, away: away?.name, isStale: isStale))
+        .accessibilityActions {
+            if let onTeam {
+                ForEach([home, away].compactMap { $0 }) { team in
+                    Button("\(team.name)'s next fixtures") { onTeam(team) }
+                }
+            }
+        }
+    }
+
+    /// A team's name and dot, which open its next fixtures when there's somewhere to open them.
+    @ViewBuilder
+    private func side(_ team: Team?, @ViewBuilder content: () -> some View) -> some View {
+        let label = HStack(spacing: 8, content: content)
+        if let team, let onTeam {
+            Button { onTeam(team) } label: {
+                label
+                    .frame(minHeight: 44)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+        } else {
+            label
+        }
     }
 
     /// The team's name, or its short name where the name doesn't fit.
@@ -236,6 +261,77 @@ private struct YourPlayersList: View {
         }
         return [player.element.webName, role, teams[player.element.team]?.name, player.element.position?.singularTitle]
             .compactMap { $0 }.joined(separator: ", ")
+    }
+}
+
+/// A team's next matches: gameweek and date, opponent, and FPL's difficulty.
+struct TeamFixturesSheet: View {
+    let team: Team
+    let fixtures: [NextFixture]
+    let teams: [Int: Team]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 8) {
+                ClubDot(team: team)
+                Text(team.name)
+                    .font(.title3.weight(.bold))
+            }
+            .accessibilityElement(children: .combine)
+            .accessibilityAddTraits(.isHeader)
+
+            if fixtures.isEmpty {
+                Text("No upcoming fixtures.")
+                    .foregroundStyle(.secondary)
+            } else {
+                Text(fixtures.count == 1 ? "NEXT FIXTURE" : "NEXT \(fixtures.count) FIXTURES")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                VStack(spacing: 8) {
+                    ForEach(fixtures) { fixture in
+                        row(fixture)
+                    }
+                }
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(20)
+        .padding(.top, 8)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func row(_ next: NextFixture) -> some View {
+        HStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("\(teams[next.fixture.opponent]?.name ?? "–") (\(next.fixture.isHome ? "H" : "A"))")
+                    .font(.subheadline.weight(.semibold))
+                Text(Self.when(next))
+                    .font(.caption)
+                    .foregroundStyle(Theme.secondaryText)
+            }
+            Spacer(minLength: 8)
+            DifficultyChip(difficulty: next.fixture.difficulty)
+                .frame(width: 44)
+        }
+        .padding(.horizontal, 12)
+        .frame(minHeight: 48)
+        .background(Theme.surface, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(Self.description(of: next, opponent: teams[next.fixture.opponent]?.name))
+    }
+
+    /// "GW11 · Sat, Nov 21", or the gameweek alone without a kickoff time.
+    nonisolated static func when(_ next: NextFixture, timeZone: TimeZone = .current) -> String {
+        guard let kickoff = next.kickoffTime else { return "GW\(next.gameweek)" }
+        var style = Date.FormatStyle.dateTime.weekday(.abbreviated).month(.abbreviated).day()
+        style.timeZone = timeZone
+        return "GW\(next.gameweek) · \(kickoff.formatted(style))"
+    }
+
+    /// "Gameweek 11: Chelsea, home, difficulty 3"
+    nonisolated static func description(of next: NextFixture, opponent: String?) -> String {
+        let side = next.fixture.isHome ? "home" : "away"
+        return "Gameweek \(next.gameweek): \(opponent ?? "Unknown team"), \(side), difficulty \(next.fixture.difficulty)"
     }
 }
 

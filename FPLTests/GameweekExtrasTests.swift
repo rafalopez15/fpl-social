@@ -34,6 +34,35 @@ struct GameweekExtrasTests {
         #expect(FixtureRow.countDescription(2) == "2 of your players")
     }
 
+    // MARK: A team's next fixtures
+
+    @Test func aTeamsNextFixturesAreTheSoonestStillToKickOff() throws {
+        func match(_ id: Int, gameweek: Int?, home: Int, away: Int, day: Int?, started: Bool = false) -> Fixture {
+            Fixture(id: id, event: gameweek, teamH: home, teamA: away, teamHDifficulty: 2, teamADifficulty: 4,
+                    kickoffTime: day.map { Base.time(day: $0, hour: 15) }, started: started, finished: false,
+                    teamHScore: nil, teamAScore: nil)
+        }
+        let fixtures = [match(1, gameweek: 10, home: 1, away: 2, day: 7, started: true),
+                        match(2, gameweek: 10, home: 3, away: 1, day: 9),       // current gameweek, still to play
+                        match(3, gameweek: 11, home: 1, away: 4, day: 21),
+                        match(4, gameweek: 11, home: 5, away: 1, day: 24),      // a double
+                        match(5, gameweek: 12, home: 6, away: 7, day: 28),      // someone else's
+                        match(6, gameweek: nil, home: 1, away: 8, day: nil),    // postponed, no gameweek
+                        match(7, gameweek: 12, home: 1, away: 9, day: 28),
+                        match(8, gameweek: 13, home: 10, away: 1, day: 29),
+                        match(9, gameweek: 14, home: 1, away: 11, day: 30)]
+        var next = Self.event(11, deadline: Base.time(day: 20, hour: 11))
+        next = Event(id: 11, name: next.name, deadlineTime: next.deadlineTime, finished: false, isCurrent: false, isNext: true)
+        let schedule = try #require(FixtureSchedule(fixtures: fixtures, events: [next]))
+
+        let coming = schedule.next(for: 1)
+        #expect(coming.map(\.id) == [2, 3, 4, 7, 8])
+        #expect(coming.map(\.gameweek) == [10, 11, 11, 12, 13])
+        #expect(coming[0].fixture == TeamFixture(id: 2, opponent: 3, isHome: false, difficulty: 4))
+        #expect(coming[1].fixture == TeamFixture(id: 3, opponent: 4, isHome: true, difficulty: 2))
+        #expect(schedule.next(for: 99).isEmpty)
+    }
+
     // MARK: Deadline countdown
 
     static func event(_ id: Int, deadline: Date) -> Event {
