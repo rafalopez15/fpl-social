@@ -89,7 +89,7 @@ struct NoteEditorView: View {
 
     private var mentionQuery: Mention.Query? {
         guard canLinkPlayers, let cursor else { return nil }
-        return Mention.query(in: text, cursor: cursor)
+        return Mention.query(in: text, cursor: cursor, linked: players)
     }
 
     private var squadIDs: Set<Int> {
@@ -180,6 +180,14 @@ struct NoteEditorView: View {
         }
         .presentationBackground(Theme.background)
         .sensoryFeedback(.selection, trigger: players.count)
+        // The bar appears silently, so tell VoiceOver. Keyed on the first suggestion so
+        // it isn't read on every keystroke.
+        .onChange(of: shownSuggestions.first?.id) {
+            let found = shownSuggestions
+            guard let message = Self.announcement(for: found, picksWithKeyboard: mentionQuery?.picksWithKeyboard == true)
+            else { return }
+            AccessibilityNotification.Announcement(message).post()
+        }
         .task(id: mentionQuery != nil) {
             if mentionQuery != nil { await suggestions.loadIfNeeded(known: linkedTeam.players) }
         }
@@ -258,7 +266,8 @@ extension NoteEditorView {
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: 4) {
                             ForEach(found) { element in
-                                suggestion(element, for: query, isFirst: element.id == found.first?.id)
+                                suggestion(element, for: query,
+                                           isFirst: query.picksWithKeyboard && element.id == found.first?.id)
                             }
                         }
                     }
@@ -306,9 +315,23 @@ extension NoteEditorView {
         [element.webName, team?.name, element.position?.singularTitle].compactMap { $0 }.joined(separator: ", ")
     }
 
+    /// What the bar shows now.
+    private var shownSuggestions: [Element] {
+        guard suggestions.state == .loaded, let query = mentionQuery else { return [] }
+        return found(for: query)
+    }
+
+    /// "3 players suggested. Return picks Saka."
+    nonisolated static func announcement(for found: [Element], picksWithKeyboard: Bool) -> String? {
+        guard let first = found.first else { return nil }
+        let count = found.count == 1 ? "1 player suggested." : "\(found.count) players suggested."
+        return picksWithKeyboard ? "\(count) Return picks \(first.webName)." : count
+    }
+
     /// False when there's nothing to pick.
     private func pickFirstSuggestion() -> Bool {
-        guard suggestions.state == .loaded, let query = mentionQuery, let first = found(for: query).first
+        guard suggestions.state == .loaded, let query = mentionQuery, query.picksWithKeyboard,
+              let first = found(for: query).first
         else { return false }
         link(first, for: query)
         return true
@@ -317,13 +340,14 @@ extension NoteEditorView {
     private func edited(from old: String, to new: String) {
         if new.unicodeScalars.count > Note.maxTextLength {
             text = Note.capped(new)
+            selection = TextSelection(insertionPoint: text.endIndex)
             return
         }
         guard canLinkPlayers else { return }
         // The iPhone keyboard has no Tab, so Return after "@sak" picks.
         if new.count == old.count + 1, let at = Self.insertedNewline(from: old, to: new),
-           suggestions.state == .loaded, let query = Mention.query(in: old, cursor: at),
-           let first = found(for: query).first {
+           suggestions.state == .loaded, let query = Mention.query(in: old, cursor: at, linked: players),
+           query.picksWithKeyboard, let first = found(for: query).first {
             text = old
             link(first, for: query)
             return

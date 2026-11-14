@@ -53,6 +53,32 @@ struct MentionTests {
         #expect(Self.query("|@saka") == nil)
     }
 
+    @Test func aFinishedMentionEndsTheSuggestions() throws {
+        let gabriel = NotePlayer(id: 7, webName: "Gabriel")
+        let text = "Bringing in @Gab"
+        let query = try #require(Mention.query(in: text, cursor: text.endIndex))
+        let (picked, cursor) = Mention.inserting("Gabriel", for: query, in: text)
+        #expect(Mention.query(in: picked, cursor: cursor, linked: [gabriel]) == nil)
+        #expect(Mention.query(in: "@Gabriel", cursor: "@Gabriel".endIndex, linked: [gabriel]) == nil)
+        // Typing on still looks for a longer name.
+        let more = "@Gabriel M"
+        #expect(Mention.query(in: more, cursor: more.endIndex, linked: [gabriel])?.text == "Gabriel M")
+    }
+
+    @Test func keyboardPicksNeedALetter() {
+        #expect(Self.query("Moving @|")?.picksWithKeyboard == false)
+        #expect(Self.query("Moving @ |")?.picksWithKeyboard == false)
+        #expect(Self.query("Moving @s|")?.picksWithKeyboard == true)
+    }
+
+    @Test func announcesSuggestionsForVoiceOver() throws {
+        let saka = try Self.player(1, "Saka"), salah = try Self.player(6, "Salah")
+        #expect(NoteEditorView.announcement(for: [saka, salah], picksWithKeyboard: true)
+                == "2 players suggested. Return picks Saka.")
+        #expect(NoteEditorView.announcement(for: [saka], picksWithKeyboard: false) == "1 player suggested.")
+        #expect(NoteEditorView.announcement(for: [], picksWithKeyboard: true) == nil)
+    }
+
     // MARK: Inserting
 
     @Test func replacesWhatWasTypedWithTheName() throws {

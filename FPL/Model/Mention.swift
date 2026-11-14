@@ -11,18 +11,24 @@ enum Mention {
         /// Includes the @.
         let range: Range<String.Index>
         let text: String
+
+        /// Return and Tab pick only after a letter, so @ then Return is a new line.
+        var picksWithKeyboard: Bool { !text.trimmingCharacters(in: .whitespaces).isEmpty }
     }
 
     /// Longer than any name, so an @ earlier in the note stops suggesting.
     static let maxQueryLength = 20
 
     /// The @ must start the note or follow whitespace, so an email address isn't one.
-    nonisolated static func query(in text: String, cursor: String.Index) -> Query? {
+    /// A linked player's whole name ends it, but "@Gabriel M" still looks for Gabriel M.
+    nonisolated static func query(in text: String, cursor: String.Index, linked: [NotePlayer] = []) -> Query? {
         guard cursor <= text.endIndex else { return nil }
         let before = text[..<cursor]
         guard let at = before.lastIndex(of: "@") else { return nil }
         if at > text.startIndex, !text[text.index(before: at)].isWhitespace { return nil }
         let typed = before[before.index(after: at)...]
+        let name = typed.trimmingCharacters(in: .whitespaces)
+        if linked.contains(where: { $0.webName == name }) { return nil }
         guard typed.count <= maxQueryLength, !typed.contains(where: \.isNewline) else { return nil }
         return Query(range: at..<cursor, text: String(typed))
     }
@@ -75,7 +81,7 @@ enum Mention {
     }
 
     /// As in Slack: deleting into "@Saka" removes it whole, and a player is unlinked
-    /// once his last mention goes. Players linked from the stats popover never are.
+    /// once his last mention goes. Players never mentioned in the text never are.
     nonisolated static func applying(_ new: String, to old: String, linked: [NotePlayer]) -> Edit {
         let before = Array(old), after = Array(new)
         var prefix = 0
