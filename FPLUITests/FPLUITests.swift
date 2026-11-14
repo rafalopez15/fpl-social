@@ -133,10 +133,17 @@ final class FPLUITests: XCTestCase {
         editor.typeText("Bringing in @\(player.prefix(3))")
         let suggestion = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Link \(player), ")).firstMatch
         XCTAssertTrue(suggestion.waitForExistence(timeout: 10))
-        suggestion.tap()
+        // Return picks the first suggestion, as Tab does on a hardware keyboard.
+        editor.typeText("\n")
 
-        XCTAssertTrue(app.buttons["Unlink \(player)"].waitForExistence(timeout: 5))
+        let chip = app.buttons["Unlink \(player)"]
+        XCTAssertTrue(chip.waitForExistence(timeout: 5))
         XCTAssertEqual(editor.value as? String, "Bringing in @\(player) ")
+
+        // Backspacing into the mention deletes it whole, and his chip with it.
+        editor.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 2))
+        XCTAssertTrue(chip.waitForNonExistence(timeout: 5))
+        XCTAssertEqual(editor.value as? String, "Bringing in ")
     }
 
     private var playerListRequests: Int {
