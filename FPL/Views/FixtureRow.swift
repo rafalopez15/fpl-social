@@ -65,9 +65,10 @@ struct FixtureRow: View {
             .buttonStyle(.borderless)
             .accessibilityLabel(Self.countDescription(players.count))
             .accessibilityHint("Lists them")
-            .popover(isPresented: $showsYourPlayers) {
+            // Below the count, so it doesn't cover the match it lists.
+            .popover(isPresented: $showsYourPlayers, arrowEdge: .top) {
                 YourPlayersList(players: players, teams: teams)
-                    .presentationBackground(Theme.surface)
+                    .presentationBackground(Theme.raised)
                     .presentationCompactAdaptation(.popover)
             }
         }

@@ -11,8 +11,11 @@ enum Theme {
     /// Screen background.
     static let background = Color(hex: backgroundHex)
     static let backgroundHex: UInt32 = 0x0F0F23
-    /// Cards, list rows, the tab bar, popovers.
+    /// Cards, list rows, the tab bar, the stats popover.
     static let surface = Color(hex: 0x1B1B30)
+    /// A popover lighter than `surface`, so it stands apart from the row it opens on.
+    /// `border` doesn't show on it.
+    static let raised = Color(hex: 0x2A2A44)
     /// Separators and borders on top of `surface`.
     static let border = Color(hex: 0x27273B)
     /// Primary text (18:1 on background).
