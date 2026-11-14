@@ -8,6 +8,9 @@ paths:
   - "FPL/Views/PlayerNotesView.swift"
   - "FPL/Views/NoteDeletedToast.swift"
   - "FPL/Views/TransferPromptView.swift"
+  - "FPL/Model/Mention.swift"
+  - "FPL/ViewModel/PlayerSuggestions.swift"
+  - "FPLTests/MentionTests.swift"
   - "FPLTests/NoteSyncTests.swift"
 ---
 
@@ -30,6 +33,15 @@ paths:
 - Players are stored as `NotePlayer` (id and `webName`) so notes show without the player list.
 - A note is about a player when he's linked or is in its transfer (`Note.isAbout`), not when named in the text.
 - Notes match transfers on gameweek and both players (`Note.forTransfer`), never time: the API builds some chip-week rows.
+
+## Linking players with @
+
+- Typing `@` and part of a name shows up to five players in a bar above the keyboard (`safeAreaInset`, not a keyboard toolbar, which didn't show in the sheet). Picking one writes `@Name ` in place of what was typed and links him as a chip. The bar's `@` button types an `@`.
+- **The chips are the links; the text is just text.** Deleting `@Saka` doesn't unlink him, and the chip's × does. Notes still save plain text, so sync and the API are unchanged.
+- Mentions are highlighted where notes are read (`Mention.highlighted`: accent, bold), only for `@` plus a linked player's exact `webName`. Not while typing.
+- Suggestions (`PlayerSuggestions`): your squad first, then total points, then name, matching the start of any name with case and accents folded (`ode` finds Ødegaard, `gross` finds Groß). Players already linked or who left the league are left out.
+- Players come from `/api/elements`, reusing `LinkedTeamStore.players` when loaded. Never `ElementViewModel`, which loads one position at a time. After a failed load only Retry tries again, not each keystroke.
+- No suggestions on locked or transfer notes (`canLinkPlayers`).
 
 ## Transfer prompt
 
