@@ -13,6 +13,9 @@ struct NoteEditorView: View {
     @Environment(\.modelContext) private var context
     @EnvironmentObject private var gameweeks: GameweekStore
     @EnvironmentObject private var noteSync: NoteSync
+    @EnvironmentObject private var linkedTeam: LinkedTeamStore
+    @ObservedObject private var lookups = TeamsAndFixturesStore.shared
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     /// The note being edited or read, or nil for a new note.
     private let note: Note?
@@ -25,6 +28,9 @@ struct NoteEditorView: View {
     /// The FPL team that made `newNoteTransfer`.
     private let managerID: Int?
     @FocusState private var isEditorFocused: Bool
+    @State private var selection: TextSelection?
+    /// Kept while the sheet is open, so each mention doesn't load the players again.
+    @StateObject private var suggestions = PlayerSuggestions()
 
     /// - Parameters:
     ///   - note: The note to edit or read. Nil writes a new one.
@@ -67,10 +73,30 @@ struct NoteEditorView: View {
     private var date: Date { note?.createdAt ?? newNoteTransfer?.time ?? .now }
     private var placeholder: String {
         if let transfer { return "Why did you bring in \(transfer.playerIn.webName)?" }
-        return "What are you thinking?"
+        return "What are you thinking? Type @ to link a player."
     }
 
     private var canSave: Bool { !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+
+    /// Not on locked notes, nor on transfer notes, whose players are the transfer.
+    private var canLinkPlayers: Bool { !isReadOnly && transfer == nil }
+
+    /// The cursor, when nothing is selected.
+    private var cursor: String.Index? {
+        guard let selection, case .selection(let range) = selection.indices, range.isEmpty else { return nil }
+        return range.lowerBound
+    }
+
+    /// The "@sak" being typed, if any.
+    private var mentionQuery: Mention.Query? {
+        guard canLinkPlayers, let cursor else { return nil }
+        return Mention.query(in: text, cursor: cursor)
+    }
+
+    private var squadIDs: Set<Int> {
+        guard case .loaded(let picks) = linkedTeam.squad else { return [] }
+        return Set(picks.picks.map(\.element))
+    }
 
     private var title: String {
         if note == nil { return transfer == nil ? "New note" : "Why this transfer?" }
@@ -107,6 +133,7 @@ struct NoteEditorView: View {
                                 PlayerChip(player: player, onRemove: isReadOnly ? nil : {
                                     players.removeAll { $0.id == player.id }
                                 })
+                                .transition(reduceMotion ? .opacity : .scale(scale: 0.6).combined(with: .opacity))
                             }
                         }
                     }
@@ -114,7 +141,7 @@ struct NoteEditorView: View {
 
                 if isReadOnly {
                     ScrollView {
-                        Text(text)
+                        Text(Mention.highlighted(text, linked: players))
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .textSelection(.enabled)
                     }
@@ -123,6 +150,16 @@ struct NoteEditorView: View {
                 }
             }
             .padding()
+            // Just above the keyboard while typing.
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                if canLinkPlayers && isEditorFocused {
+                    HStack(spacing: 4) { mentionBar }
+                        .padding(.horizontal, 12)
+                        .frame(minHeight: 48)
+                        .background(Theme.surface)
+                        .overlay(alignment: .top) { Rectangle().fill(Theme.border).frame(height: 1) }
+                }
+            }
             .themedScreen()
             .navigationTitle(title)
             .navigationBarTitleDisplayMode(.inline)
@@ -143,6 +180,10 @@ struct NoteEditorView: View {
             }
         }
         .presentationBackground(Theme.background)
+        .sensoryFeedback(.selection, trigger: players.count)
+        .task(id: mentionQuery != nil) {
+            if mentionQuery != nil { await suggestions.loadIfNeeded(known: linkedTeam.players) }
+        }
         .task {
             if !isReadOnly { isEditorFocused = true }
             await gameweeks.loadIfNeeded()
@@ -157,7 +198,7 @@ struct NoteEditorView: View {
     }
 
     private var editor: some View {
-        TextEditor(text: $text)
+        TextEditor(text: $text, selection: $selection)
             .focused($isEditorFocused)
             .onChange(of: text) {
                 if text.unicodeScalars.count > Note.maxTextLength { text = Note.capped(text) }
@@ -197,6 +238,92 @@ struct NoteEditorView: View {
     }
 }
 
+// MARK: - Linking players with @
+
+extension NoteEditorView {
+    /// Players matching the mention being typed, and an @ button.
+    @ViewBuilder
+    private var mentionBar: some View {
+        if let query = mentionQuery {
+            switch suggestions.state {
+            case .idle, .loading:
+                ProgressView()
+                    .accessibilityLabel("Loading players")
+            case .failed:
+                Button("Couldn't load players. Retry") { Task { await suggestions.reload() } }
+            case .loaded:
+                let found = suggestions.suggestions(for: query.text, squad: squadIDs, linked: Set(players.map(\.id)))
+                if found.isEmpty {
+                    Text("No players found")
+                        .foregroundStyle(Theme.secondaryText)
+                } else {
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 4) {
+                            ForEach(found) { element in
+                                suggestion(element, for: query)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        Spacer(minLength: 0)
+        Button(action: insertMention) {
+            Text("@")
+                .font(.body.weight(.semibold))
+                .frame(minWidth: 44, minHeight: 44)
+        }
+        .accessibilityLabel("Mention a player")
+    }
+
+    private func suggestion(_ element: Element, for query: Mention.Query) -> some View {
+        let team = lookups.teams[element.team]
+        return Button {
+            link(element, for: query)
+        } label: {
+            HStack(spacing: 4) {
+                Text(element.webName)
+                    .font(.subheadline.weight(.semibold))
+                if let short = team?.shortName {
+                    Text(short)
+                        .font(.caption)
+                        .foregroundStyle(Theme.secondaryText)
+                }
+            }
+            .padding(.horizontal, 8)
+            .frame(minHeight: 44)
+        }
+        .accessibilityLabel("Link " + Self.description(of: element, team: team))
+    }
+
+    /// "Saka, Arsenal, Midfielder"
+    nonisolated static func description(of element: Element, team: Team?) -> String {
+        [element.webName, team?.name, element.position?.singularTitle].compactMap { $0 }.joined(separator: ", ")
+    }
+
+    /// Writes "@Name " in place of what was typed, and links him if he isn't yet.
+    private func link(_ element: Element, for query: Mention.Query) {
+        let (newText, cursor) = Mention.inserting(element.webName, for: query, in: text)
+        text = newText
+        selection = TextSelection(insertionPoint: cursor)
+        guard !players.contains(where: { $0.id == element.id }) else { return }
+        withAnimation(reduceMotion ? nil : .spring(duration: 0.35, bounce: 0.4)) {
+            players.append(NotePlayer(id: element.id, webName: element.webName))
+        }
+    }
+
+    /// Types an @ at the cursor, after a space if needed, so suggestions show.
+    private func insertMention() {
+        let at = cursor ?? text.endIndex
+        let needsSpace = at > text.startIndex && !text[text.index(before: at)].isWhitespace
+        let inserted = (needsSpace ? " " : "") + "@"
+        let offset = text.distance(from: text.startIndex, to: at) + inserted.count
+        text.insert(contentsOf: inserted, at: at)
+        selection = TextSelection(insertionPoint: text.index(text.startIndex, offsetBy: offset))
+        isEditorFocused = true
+    }
+}
+
 /// A linked player's name, with a button to unlink it when editing.
 private struct PlayerChip: View {
     let player: NotePlayer
@@ -231,6 +358,7 @@ private struct PlayerChip: View {
 #Preview {
     NoteEditorView(players: [NotePlayer(id: 1, webName: "Isak")])
         .environmentObject(GameweekStore())
+        .environmentObject(LinkedTeamStore())
         .environmentObject(NoteSync.preview)
         .modelContainer(NoteSync.preview.container)
 }
