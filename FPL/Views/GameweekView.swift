@@ -140,7 +140,7 @@ struct GameweekView: View {
             isRefreshing = true
             // Its own task: SwiftUI cancels the action's when the list redraws mid-load.
             // A failure shows the "Couldn't update" row, not a toast.
-            await Task { await model.reload() }.value
+            _ = await Task { await model.reload() }.value
             isRefreshing = false
         }
     }
