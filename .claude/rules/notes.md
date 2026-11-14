@@ -36,8 +36,8 @@ paths:
 
 ## Linking players with @
 
-- Typing `@` and part of a name shows up to five players in a bar above the keyboard (`safeAreaInset`, not a keyboard toolbar, which didn't show in the sheet). Picking one writes `@Name ` in place of what was typed and links him as a chip. The bar's `@` button types an `@`.
-- **The chips are the links; the text is just text.** Deleting `@Saka` doesn't unlink him, and the chip's × does. Notes still save plain text, so sync and the API are unchanged.
+- Typing `@` and part of a name shows up to five players in a bar above the keyboard (`safeAreaInset`, not a keyboard toolbar, which didn't show in the sheet). Picking one writes `@Name ` in place of what was typed and links him as a chip. The first suggestion is marked: Tab or Return on a hardware keyboard (`onKeyPress`), or Return on the iPhone keyboard (`insertedNewline`), picks it. The bar's `@` button types an `@`.
+- **Mentions behave as in Slack** (`Mention.applying`, run on every edit): deleting into `@Saka` deletes the whole mention, and a player is unlinked once his last mention is gone. Players linked without a mention (the stats popover) are never unlinked by typing; the chip's × unlinks anyone. Notes still save plain text, so sync and the API are unchanged.
 - Mentions are highlighted where notes are read (`Mention.highlighted`: accent, bold), only for `@` plus a linked player's exact `webName`. Not while typing.
 - Suggestions (`PlayerSuggestions`): your squad first, then total points, then name, matching the start of any name with case and accents folded (`ode` finds Ødegaard, `gross` finds Groß). Players already linked or who left the league are left out.
 - Players come from `/api/elements`, reusing `LinkedTeamStore.players` when loaded. Never `ElementViewModel`, which loads one position at a time. After a failed load only Retry tries again, not each keystroke.
