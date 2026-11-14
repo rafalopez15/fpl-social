@@ -4,6 +4,8 @@ paths:
   - ".swiftlint.yml"
   - "FPLTests/.swiftlint.yml"
   - "FPL.xcodeproj/**"
+  - ".gitleaks.toml"
+  - ".gitleaksignore"
 ---
 
 # CI
@@ -16,3 +18,11 @@ paths:
 - Keep macOS to the one build-and-test job: it costs about 10 times Linux minutes.
 - `contract.yml` runs daily at 07:00 UTC: it fetches production's responses and runs only `ContractTests`. A 503 and the picks 404 before the season keep the committed fixture with a warning; other errors fail.
 - Pin actions by full commit hash with the release as a comment.
+
+## Secret scan
+
+- `gitleaks.yml` (check **Gitleaks**) scans the full history on every PR and push to `main`, with no path filter so the required check always runs. Its binary is pinned by `GITLEAKS_VERSION` and `GITLEAKS_SHA256`, bumped together by hand; keep them in step with fplAPI's.
+- `.gitleaks.toml` adds a `supabase-secret-key` rule to the defaults, and allows the Supabase publishable key only in `project.pbxproj` (`condition = "AND"`: a path alone would skip the whole file).
+- **On a finding, rotate the secret first**: the repo is public. On a PR branch, rewrite the branch to drop the commit. Once on `main`, add the fingerprint (`<commit>:<file>:<rule>:<line>`, from the job log) to `.gitleaksignore` after rotating.
+- A false positive gets the narrowest allowlist in `.gitleaks.toml` (path plus value regex, with `condition = "AND"`) or its fingerprint. Never turn a rule off.
+- Locally: `git fetch --prune`, then `docker run --rm -v "$PWD":/repo:ro -w /repo --entrypoint sh ghcr.io/gitleaks/gitleaks:v8.30.1 -c "git config --global --add safe.directory '*' && gitleaks git --redact ."`. `gitleaks git` scans every ref, so without the prune a deleted branch's leftover ref, such as a test PR's fake secrets, is flagged. `gitleaks dir` also reads gitignored files, so it flags `Config/Secrets.xcconfig`; that never reaches CI.
