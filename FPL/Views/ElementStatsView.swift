@@ -225,7 +225,7 @@ private struct FixturesSection: View {
 }
 
 /// FPL's 1–5 fixture difficulty as a colored chip.
-private struct DifficultyChip: View {
+struct DifficultyChip: View {
     let difficulty: Int
 
     var body: some View {

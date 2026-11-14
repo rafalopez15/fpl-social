@@ -86,6 +86,11 @@ final class FPLUITests: XCTestCase {
         app.buttons["Next gameweek"].tap()
         XCTAssertTrue(app.buttons["Gameweek \(gameweek + 1)"].waitForExistence(timeout: 5))
         XCTAssertTrue(element(labelled: match).waitForExistence(timeout: 10))
+
+        // The home team's name, in the row's left half, opens its next fixtures.
+        element(labelled: match).coordinate(withNormalizedOffset: CGVector(dx: 0.2, dy: 0.5)).tap()
+        let sheet = NSPredicate(format: "label BEGINSWITH 'NEXT ' OR label == 'No upcoming fixtures.'")
+        XCTAssertTrue(app.staticTexts.matching(sheet).firstMatch.waitForExistence(timeout: 5))
     }
 
     @MainActor

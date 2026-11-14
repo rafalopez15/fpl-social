@@ -8,8 +8,8 @@ paths:
 
 ## Theme
 
-- `Theme` colors: `background` #0F0F23, `surface` #1B1B30 (cards, rows, tab bar, popover), `border`, `text`, `secondaryText`, `accent` #22C55E (also `AccentColor`), `onAccent`, `warning`, `danger`, `yourRow`. All text colors pass 4.5:1.
-- Screens `.themedScreen()`, list and form rows `.themedRow()`. Sheets `.presentationBackground(Theme.background)`, popovers `Theme.surface`.
+- `Theme` colors: `background` #0F0F23, `surface` #1B1B30 (cards, rows, tab bar, the stats popover), `raised` #2A2A44 (the Your players popover, so it stands apart from the row under it), `border`, `text`, `secondaryText`, `accent` #22C55E (also `AccentColor`), `onAccent`, `warning`, `danger`, `yourRow`. All text colors pass 4.5:1.
+- Screens `.themedScreen()`, list and form rows `.themedRow()`. Sheets `.presentationBackground(Theme.background)`, popovers `Theme.surface`, or `Theme.raised` when there's no `Theme.border` inside to lose.
 - Don't use `foregroundStyle(_:_:)` on a container: it turns `ContentUnavailableView` descriptions white.
 - SF Pro with Dynamic Type text styles only; no custom fonts.
 

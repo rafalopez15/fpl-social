@@ -123,10 +123,20 @@ struct FPLAPIClient: NotesAPI, TeamsAPI {
     }
 
     /// `GET /api/events/{gw}/fixtures`: a gameweek's matches by kickoff, live from FPL,
-    /// with scores and minutes during play. `[]` when every match is postponed;
-    /// 404 when the gameweek doesn't exist; 503 when FPL is down with no saved copy.
-    func fixtures(gameweek: Int) async throws -> [Fixture] {
-        try await get("events/\(gameweek)/fixtures")
+    /// with scores and minutes during play. `[]` when every match is postponed; 404 when
+    /// the gameweek doesn't exist. While FPL is down it's the API's last saved copy
+    /// (`staleAsOf`), or 503 without one.
+    func fixtures(gameweek: Int) async throws -> Fetched<[Fixture]> {
+        let path = "events/\(gameweek)/fixtures"
+        let (data, http) = try await response("GET", path)
+        return Fetched(value: try decode(data, "GET", path), staleAsOf: Self.staleAsOf(in: http))
+    }
+
+    /// When the API fetched the copy it served, from `X-Data-Stale-As-Of`. Nil for a
+    /// fresh response.
+    static func staleAsOf(in response: HTTPURLResponse) -> Date? {
+        guard let value = response.value(forHTTPHeaderField: "X-Data-Stale-As-Of") else { return nil }
+        return try? JSONDecoder.fplAPI.decode(Date.self, from: Data("\"\(value)\"".utf8))
     }
 
     /// `GET /api/leagues/{id}?page=`: a classic league's standings, 50 teams a page.
@@ -219,7 +229,10 @@ struct FPLAPIClient: NotesAPI, TeamsAPI {
 
     private func send<T: Decodable>(_ method: String, _ path: String, query: [URLQueryItem] = [],
                                     body: Data? = nil, accessToken: String? = nil) async throws -> T {
-        let data = try await data(method, path, query: query, body: body, accessToken: accessToken)
+        try decode(try await data(method, path, query: query, body: body, accessToken: accessToken), method, path)
+    }
+
+    private func decode<T: Decodable>(_ data: Data, _ method: String, _ path: String) throws -> T {
         do {
             return try JSONDecoder.fplAPI.decode(T.self, from: data)
         } catch {
@@ -231,9 +244,14 @@ struct FPLAPIClient: NotesAPI, TeamsAPI {
         }
     }
 
-    /// Sends the request and returns the body of a 2xx response; other statuses throw `APIError`.
     private func data(_ method: String, _ path: String, query: [URLQueryItem] = [],
                       body: Data? = nil, accessToken: String? = nil) async throws -> Data {
+        try await response(method, path, query: query, body: body, accessToken: accessToken).data
+    }
+
+    /// Sends the request and returns a 2xx response with its body; other statuses throw `APIError`.
+    private func response(_ method: String, _ path: String, query: [URLQueryItem] = [], body: Data? = nil,
+                          accessToken: String? = nil) async throws -> (data: Data, http: HTTPURLResponse) {
         let route = "\(method) \(Self.route(path))"
 
         let data: Data
@@ -285,7 +303,7 @@ struct FPLAPIClient: NotesAPI, TeamsAPI {
 
         // "shared": another caller's request, so it isn't counted as a request of its own.
         Logger.network.debug("\(route, privacy: .public) \(http.statusCode), \(data.count) bytes\(shared ? " (shared)" : "")")
-        return data
+        return (data, http)
     }
 
     /// The path with manager, league and note IDs taken out, so it can be logged as public.
@@ -296,6 +314,16 @@ struct FPLAPIClient: NotesAPI, TeamsAPI {
             .replacingOccurrences(of: #"leagues/\d+"#, with: "leagues/{id}", options: .regularExpression)
     }
 }
+
+/// A response's value, and when the API fetched it if it served a saved copy.
+struct Fetched<Value> {
+    let value: Value
+    /// Nil for a fresh response.
+    var staleAsOf: Date?
+}
+
+extension Fetched: Sendable where Value: Sendable {}
+extension Fetched: Equatable where Value: Equatable {}
 
 /// Identical GET requests in flight at the same time share one network request.
 /// One made after the first finishes goes out again, so a refresh is always fresh.

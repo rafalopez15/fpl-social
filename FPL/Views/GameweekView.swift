@@ -11,11 +11,14 @@ struct GameweekView: View {
     /// Tabs stay alive when hidden, so loading waits until this one is first shown.
     let isSelected: Bool
     @State private var hasBeenShown = false
+    @Environment(\.scenePhase) private var scenePhase
     @EnvironmentObject private var gameweeks: GameweekStore
+    @EnvironmentObject private var linkedTeam: LinkedTeamStore
     @ObservedObject private var lookups = TeamsAndFixturesStore.shared
     @StateObject private var model = GameweekFixturesModel()
-    @State private var toast: Toast?
     @State private var isRefreshing = false
+    /// The team whose next fixtures are up.
+    @State private var teamShown: Team?
 
     var body: some View {
         NavigationStack {
@@ -36,7 +39,14 @@ struct GameweekView: View {
                 }
             }
             .themedScreen()
-            .toast($toast)
+            .sheet(item: $teamShown) { team in
+                TeamFixturesSheet(team: team, teams: lookups.teams,
+                                  fixtures: lookups.scheduleFailed ? nil : lookups.schedule?.next(for: team.id) ?? [],
+                                  retry: { await lookups.loadIfNeeded() })
+                    .presentationDetents([.medium])
+                    .presentationDragIndicator(.visible)
+                    .presentationBackground(Theme.background)
+            }
             // Like Notes and Profile: the tab bar says where you are, so no title bar.
             .navigationTitle("Gameweek")
             .toolbar(.hidden, for: .navigationBar)
@@ -51,6 +61,37 @@ struct GameweekView: View {
             await model.open(current: current, next: gameweeks.events.first(where: \.isNext)?.id)
             await teams
         }
+        // Only while the tab is on screen and a match is live or still to come, or FPL is down.
+        .task(id: RefreshKey(isOn: isSelected && scenePhase == .active && model.refreshesItself,
+                             gameweek: model.gameweek)) {
+            guard isSelected, scenePhase == .active else { return }
+            await refreshItself()
+        }
+    }
+
+    /// Reloads the gameweek a minute after its last load, or at the next kickoff, for as
+    /// long as this runs.
+    private func refreshItself() async {
+        while let delay = model.refreshDelay() {
+            try? await Task.sleep(for: .seconds(delay))
+            if Task.isCancelled { return }
+            await model.reload()
+        }
+    }
+
+    private struct RefreshKey: Equatable {
+        let isOn: Bool
+        let gameweek: Int?
+    }
+
+    private func row(_ fixture: Fixture) -> some View {
+        // The latest squad, from its own gameweek on. Nil with no team or squad.
+        let squad: ManagerPicks? = if case .loaded(let picks) = linkedTeam.squad,
+                                      model.gameweek.map(picks.applies) ?? true { picks } else { nil }
+        return FixtureRow(fixture: fixture, teams: lookups.teams, isStale: model.staleAsOf != nil,
+                          yourPlayers: squad?.players(in: fixture, from: linkedTeam.players),
+                          onTeam: { teamShown = $0 })
+            .themedRow()
     }
 
     private struct StartKey: Equatable {
@@ -69,8 +110,24 @@ struct GameweekView: View {
                         .listRowBackground(Color.clear)
                         .accessibilityLabel("Refreshing")
                 }
-                header(gameweek)
-                    .themedRow()
+                // Each minute, for the countdown.
+                TimelineView(.everyMinute) { timeline in
+                    header(gameweek, now: timeline.date)
+                }
+                .themedRow()
+                if let staleAsOf = model.staleAsOf {
+                    Label(Self.staleLine(asOf: staleAsOf), systemImage: "arrow.triangle.2.circlepath")
+                        .font(.footnote)
+                        .foregroundStyle(Theme.secondaryText)
+                        .frame(maxWidth: .infinity, minHeight: 32)
+                        .themedRow()
+                } else if model.couldntUpdate {
+                    Label("Couldn't update", systemImage: "wifi.exclamationmark")
+                        .font(.footnote)
+                        .foregroundStyle(Theme.secondaryText)
+                        .frame(maxWidth: .infinity, minHeight: 32)
+                        .themedRow()
+                }
             }
 
             matches
@@ -82,8 +139,8 @@ struct GameweekView: View {
         .refreshable {
             isRefreshing = true
             // Its own task: SwiftUI cancels the action's when the list redraws mid-load.
-            let reloaded = await Task { await model.reload() }.value
-            if !reloaded { toast = Toast(ProfileRefresh.failedMessage, style: .warning) }
+            // A failure shows the "Couldn't update" row, not a toast.
+            _ = await Task { await model.reload() }.value
             isRefreshing = false
         }
     }
@@ -122,9 +179,7 @@ struct GameweekView: View {
             }
             ForEach(days) { day in
                 Section {
-                    ForEach(day.fixtures) { fixture in
-                        FixtureRow(fixture: fixture, teams: lookups.teams).themedRow()
-                    }
+                    ForEach(day.fixtures, content: row)
                 } header: {
                     // As written, not the grouped style's small capitals.
                     Text(Self.title(for: day.day))
@@ -135,21 +190,18 @@ struct GameweekView: View {
             }
             if !postponed.isEmpty {
                 Section("Postponed") {
-                    ForEach(postponed) { fixture in
-                        FixtureRow(fixture: fixture, teams: lookups.teams).themedRow()
-                    }
+                    ForEach(postponed, content: row)
                 }
             }
         }
     }
 
     /// The gameweek centered between the arrows. Tapping it lists every gameweek.
-    private func header(_ gameweek: Int) -> some View {
+    private func header(_ gameweek: Int, now: Date) -> some View {
         let last = max(gameweeks.events.map(\.id).max() ?? gameweek, gameweek)
         let dates = Self.dates(of: model.fixtures)
-        // Only one still to come: a past gameweek's deadline says nothing.
-        let deadline = gameweeks.deadline(for: gameweek).flatMap { $0 > .now ? $0 : nil }?
-            .formatted(.dateTime.weekday(.abbreviated).day().month(.abbreviated).hour().minute())
+        // The next deadline whichever gameweek is shown; nil after the season's last.
+        let countdown = DeadlineCountdown.next(in: gameweeks.events, now: now)
         return HStack(spacing: 0) {
             arrow("chevron.left", label: "Previous gameweek", to: gameweek - 1, last: last)
 
@@ -170,10 +222,10 @@ struct GameweekView: View {
                             .font(.subheadline)
                             .foregroundStyle(Theme.text)
                     }
-                    if let deadline {
-                        Text("Deadline \(deadline)")
-                            .font(.footnote)
-                            .foregroundStyle(Theme.secondaryText)
+                    if let countdown {
+                        Text(countdown.text(now: now))
+                            .font(.footnote.monospacedDigit())
+                            .foregroundStyle(countdown.isSoon(now: now) ? Theme.warning : Theme.secondaryText)
                     }
                 }
                 .multilineTextAlignment(.center)
@@ -181,7 +233,7 @@ struct GameweekView: View {
                 .contentShape(Rectangle())
             }
             .accessibilityLabel("Gameweek \(gameweek)")
-            .accessibilityValue([dates, deadline.map { "deadline \($0)" }].compactMap { $0 }.joined(separator: ", "))
+            .accessibilityValue([dates, countdown?.spokenText(now: now)].compactMap { $0 }.joined(separator: ", "))
             .accessibilityHint("Choose a gameweek")
             .accessibilityAddTraits(.isHeader)
             .accessibilityAdjustableAction { direction in
@@ -218,7 +270,9 @@ struct GameweekView: View {
     private func select(_ gameweek: Int) {
         Task { await model.select(gameweek) }
     }
+}
 
+extension GameweekView {
     /// "Today", "Tomorrow", or "Saturday, November 21" in the user's locale.
     nonisolated static func title(for day: Date, now: Date = .now, calendar: Calendar = .current) -> String {
         if calendar.isDate(day, inSameDayAs: now) { return "Today" }
@@ -228,6 +282,13 @@ struct GameweekView: View {
         var style = Date.FormatStyle.dateTime.weekday(.wide).month(.wide).day()
         style.timeZone = calendar.timeZone
         return day.formatted(style)
+    }
+
+    /// "FPL is updating · showing scores as of 13:28", in the user's time zone.
+    nonisolated static func staleLine(asOf date: Date, timeZone: TimeZone = .current) -> String {
+        var style = Date.FormatStyle(date: .omitted, time: .shortened)
+        style.timeZone = timeZone
+        return "FPL is updating · showing scores as of \(date.formatted(style))"
     }
 
     /// "Nov 21 – 23": the first to the last kickoff day. Nil with no kickoff times.
@@ -240,179 +301,8 @@ struct GameweekView: View {
     }
 }
 
-/// One match: home team, then the kickoff time or score, then the away team.
-struct FixtureRow: View {
-    let fixture: Fixture
-    let teams: [Int: Team]
-
-    static var placeholder: some View {
-        FixtureRow(fixture: Fixture(id: 0, event: nil, teamH: 0, teamA: 0, teamHDifficulty: 3, teamADifficulty: 3,
-                                    kickoffTime: .now, started: false, finished: false, teamHScore: nil, teamAScore: nil),
-                   teams: [:])
-            .redacted(reason: .placeholder)
-            .accessibilityHidden(true)
-    }
-
-    private var home: Team? { teams[fixture.teamH] }
-    private var away: Team? { teams[fixture.teamA] }
-
-    private var score: String {
-        "\(fixture.teamHScore ?? 0) - \(fixture.teamAScore ?? 0)"
-    }
-
-    var body: some View {
-        HStack(spacing: 10) {
-            HStack(spacing: 8) {
-                name(home, alignment: .trailing)
-                ClubDot(team: home)
-            }
-            .frame(maxWidth: .infinity, alignment: .trailing)
-
-            middle
-                .frame(minWidth: 70)
-
-            HStack(spacing: 8) {
-                ClubDot(team: away)
-                name(away, alignment: .leading)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-        }
-        .frame(minHeight: 52)
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(Self.description(of: fixture, home: home?.name, away: away?.name))
-    }
-
-    /// The team's name, or its short name where the name doesn't fit.
-    private func name(_ team: Team?, alignment: Alignment) -> some View {
-        ViewThatFits(in: .horizontal) {
-            Text(team?.name ?? "–")
-            Text(team?.shortName ?? "–")
-        }
-        .font(.subheadline.weight(.semibold))
-        .lineLimit(1)
-        .frame(maxWidth: .infinity, alignment: alignment)
-    }
-
-    @ViewBuilder
-    private var middle: some View {
-        switch fixture.matchState {
-        case .notStarted:
-            chip {
-                Text(fixture.kickoffTime?.formatted(date: .omitted, time: .shortened) ?? "–")
-                    .font(.footnote.weight(.medium).monospacedDigit())
-                    .foregroundStyle(.secondary)
-            }
-        case .live(let minute):
-            VStack(spacing: 3) {
-                chip(border: Theme.accent) {
-                    Text(score)
-                        .font(.subheadline.weight(.bold).monospacedDigit())
-                }
-                HStack(spacing: 4) {
-                    Text("LIVE")
-                        .font(.caption2.weight(.bold))
-                        .foregroundStyle(Theme.onAccent)
-                        .padding(.horizontal, 5)
-                        .padding(.vertical, 1)
-                        .background(Theme.accent, in: Capsule())
-                    Text("\(minute)'")
-                        .font(.caption.monospacedDigit())
-                        .foregroundStyle(Theme.accent)
-                }
-            }
-            .padding(.vertical, 6)
-        case .finished:
-            chip {
-                Text(score)
-                    .font(.subheadline.weight(.bold).monospacedDigit())
-            }
-        case .postponed:
-            Text("Postponed")
-                .font(.footnote)
-                .foregroundStyle(.secondary)
-        }
-    }
-
-    /// The time or score on a darker chip, so the middle column reads as one line down the list.
-    private func chip(border: Color = .clear, @ViewBuilder _ content: () -> some View) -> some View {
-        content()
-            .lineLimit(1)
-            .padding(.horizontal, 8)
-            .frame(minWidth: 58, minHeight: 28)
-            .background(Theme.background, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-            .overlay { RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(border) }
-    }
-
-    /// What VoiceOver reads: "Arsenal 2, Chelsea 1, live, 67 minutes".
-    nonisolated static func description(of fixture: Fixture, home: String?, away: String?,
-                                        timeZone: TimeZone = .current) -> String {
-        let home = home ?? "Home team", away = away ?? "Away team"
-        let scoreline = "\(home) \(fixture.teamHScore ?? 0), \(away) \(fixture.teamAScore ?? 0)"
-        switch fixture.matchState {
-        case .notStarted:
-            var style = Date.FormatStyle(date: .omitted, time: .shortened)
-            style.timeZone = timeZone
-            return "\(home) v \(away), kicks off \(fixture.kickoffTime?.formatted(style) ?? "later")"
-        case .live(let minute):
-            return "\(scoreline), live, \(minute) \(minute == 1 ? "minute" : "minutes")"
-        case .finished:
-            return "\(scoreline), full time"
-        case .postponed:
-            return "\(home) v \(away), postponed"
-        }
-    }
-}
-
-/// The club's home color as a dot; grey for a club with no colors.
-private struct ClubDot: View {
-    let team: Team?
-
-    var body: some View {
-        Circle()
-            .fill(Color(hex: KitColors(primary: team?.primaryColor, secondary: team?.secondaryColor).primary))
-            // Dark kits would vanish into the navy row without it.
-            .overlay { Circle().strokeBorder(.white.opacity(0.28), lineWidth: 1) }
-            .frame(width: 12, height: 12)
-            .accessibilityHidden(true)
-    }
-}
-
 #Preview {
     GameweekView(isSelected: true)
         .environmentObject(GameweekStore())
-}
-
-#Preview("Row states") {
-    let teams = [1: Team(id: 1, name: "Arsenal", shortName: "ARS", primaryColor: "#EF0107"),
-                 2: Team(id: 2, name: "Newcastle", shortName: "NEW", primaryColor: "#241F20"),
-                 3: Team(id: 3, name: "Nott'm Forest", shortName: "NFO")]
-    func fixture(_ id: Int, home: Int, away: Int, kickoff: Date? = .now, started: Bool = false,
-                 score: (Int, Int)? = nil, minutes: Int? = 0, fullTime: Bool = false) -> Fixture {
-        Fixture(id: id, event: 10, teamH: home, teamA: away, teamHDifficulty: 3, teamADifficulty: 3,
-                kickoffTime: kickoff, started: started, finished: false,
-                teamHScore: score?.0, teamAScore: score?.1, minutes: minutes, finishedProvisional: fullTime)
-    }
-    return List {
-        Section("Upcoming, live, full time") {
-            FixtureRow(fixture: fixture(1, home: 1, away: 2), teams: teams).themedRow()
-            FixtureRow(fixture: fixture(2, home: 2, away: 3, started: true, score: (1, 0), minutes: 67),
-                       teams: teams).themedRow()
-            FixtureRow(fixture: fixture(3, home: 3, away: 1, started: true, score: (2, 2), minutes: 90, fullTime: true),
-                       teams: teams).themedRow()
-        }
-        Section("Postponed") {
-            FixtureRow(fixture: fixture(4, home: 1, away: 3, kickoff: nil), teams: teams).themedRow()
-        }
-        Section("Empty gameweek") {
-            Text("No matches this gameweek.")
-                .foregroundStyle(.secondary)
-                .frame(minHeight: 44)
-                .themedRow()
-        }
-        Section("Loading") {
-            FixtureRow.placeholder.themedRow()
-        }
-    }
-    .listStyle(.insetGrouped)
-    .themedScreen()
+        .environmentObject(LinkedTeamStore())
 }
