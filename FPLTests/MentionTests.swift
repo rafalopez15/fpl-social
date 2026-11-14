@@ -8,7 +8,6 @@ import SwiftUI
 import Testing
 @testable import FPL
 
-/// Linking players with @ in a note: finding what's typed, suggesting, inserting and highlighting.
 @MainActor
 struct MentionTests {
     static func player(_ id: Int, _ webName: String, first: String = "", second: String = "",
@@ -106,7 +105,7 @@ struct MentionTests {
     }
 
     @Test func playersLinkedWithoutAMentionStay() {
-        // Isak came from the stats popover: never mentioned, so typing doesn't unlink him.
+        // Isak was linked from the stats popover, so never mentioned.
         let edit = Mention.applying("Isa", to: "Isak", linked: [Self.isak])
         #expect(edit.text == "Isa")
         #expect(edit.linked == [Self.isak])
@@ -147,7 +146,7 @@ struct MentionTests {
         let all = try Self.candidates()
         let shown = PlayerSuggestions.suggestions(for: "sa", in: all, squad: [4], linked: [])
         #expect(shown.map(\.id) == [4, 6, 1])
-        // Just @: the squad, then the most points, five at most.
+        // A bare @ shows five.
         let top = PlayerSuggestions.suggestions(for: "", in: all, squad: [5], linked: [6])
         #expect(top.map(\.id) == [5, 1, 3, 2, 4])
     }
@@ -180,7 +179,6 @@ struct MentionTests {
         }
         await model.loadIfNeeded()
         #expect(model.state == .failed)
-        // Typing on doesn't try again; Retry does.
         await model.loadIfNeeded()
         #expect(loads == 1)
         fails = false

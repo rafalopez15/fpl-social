@@ -29,7 +29,7 @@ struct NoteEditorView: View {
     private let managerID: Int?
     @FocusState private var isEditorFocused: Bool
     @State private var selection: TextSelection?
-    /// Kept while the sheet is open, so each mention doesn't load the players again.
+    /// Owned here so the players load once per sheet.
     @StateObject private var suggestions = PlayerSuggestions()
 
     /// - Parameters:
@@ -78,16 +78,15 @@ struct NoteEditorView: View {
 
     private var canSave: Bool { !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
 
-    /// Not on locked notes, nor on transfer notes, whose players are the transfer.
+    /// A transfer note's players are the transfer.
     private var canLinkPlayers: Bool { !isReadOnly && transfer == nil }
 
-    /// The cursor, when nothing is selected.
+    /// Nil while text is selected.
     private var cursor: String.Index? {
         guard let selection, case .selection(let range) = selection.indices, range.isEmpty else { return nil }
         return range.lowerBound
     }
 
-    /// The "@sak" being typed, if any.
     private var mentionQuery: Mention.Query? {
         guard canLinkPlayers, let cursor else { return nil }
         return Mention.query(in: text, cursor: cursor)
@@ -150,7 +149,7 @@ struct NoteEditorView: View {
                 }
             }
             .padding()
-            // Just above the keyboard while typing.
+            // Not a keyboard toolbar: that doesn't show in this sheet.
             .safeAreaInset(edge: .bottom, spacing: 0) {
                 if canLinkPlayers && isEditorFocused {
                     HStack(spacing: 4) { mentionBar }
@@ -201,7 +200,7 @@ struct NoteEditorView: View {
         TextEditor(text: $text, selection: $selection)
             .focused($isEditorFocused)
             .onChange(of: text) { old, new in edited(from: old, to: new) }
-            // A hardware keyboard's Tab or Return picks the first suggestion.
+            // Hardware keys only; the iPhone's Return is handled in edited(from:to:).
             .onKeyPress(keys: [.tab, .return]) { _ in pickFirstSuggestion() ? .handled : .ignored }
             .scrollContentBackground(.hidden)
             .padding(8)
@@ -241,7 +240,6 @@ struct NoteEditorView: View {
 // MARK: - Linking players with @
 
 extension NoteEditorView {
-    /// Players matching the mention being typed, and an @ button.
     @ViewBuilder
     private var mentionBar: some View {
         if let query = mentionQuery {
@@ -276,12 +274,10 @@ extension NoteEditorView {
         .accessibilityLabel("Mention a player")
     }
 
-    /// The players to suggest for `query`.
     private func found(for query: Mention.Query) -> [Element] {
         suggestions.suggestions(for: query.text, squad: squadIDs, linked: Set(players.map(\.id)))
     }
 
-    /// The first suggestion is marked: Return or Tab picks it.
     private func suggestion(_ element: Element, for query: Mention.Query, isFirst: Bool) -> some View {
         let team = lookups.teams[element.team]
         return Button {
@@ -306,12 +302,11 @@ extension NoteEditorView {
         .accessibilityHint(isFirst ? "Return also picks this player." : "")
     }
 
-    /// "Saka, Arsenal, Midfielder"
     nonisolated static func description(of element: Element, team: Team?) -> String {
         [element.webName, team?.name, element.position?.singularTitle].compactMap { $0 }.joined(separator: ", ")
     }
 
-    /// Picks the first suggestion for the mention being typed. False when there's none.
+    /// False when there's nothing to pick.
     private func pickFirstSuggestion() -> Bool {
         guard suggestions.state == .loaded, let query = mentionQuery, let first = found(for: query).first
         else { return false }
@@ -319,15 +314,13 @@ extension NoteEditorView {
         return true
     }
 
-    /// After each change to the text: caps its length, lets Return pick a suggestion,
-    /// and deletes mentions whole and unlinks their players (`Mention.applying`).
     private func edited(from old: String, to new: String) {
         if new.unicodeScalars.count > Note.maxTextLength {
             text = Note.capped(new)
             return
         }
         guard canLinkPlayers else { return }
-        // The iPhone keyboard has no Tab: Return typed just after "@sak" picks instead.
+        // The iPhone keyboard has no Tab, so Return after "@sak" picks.
         if new.count == old.count + 1, let at = Self.insertedNewline(from: old, to: new),
            suggestions.state == .loaded, let query = Mention.query(in: old, cursor: at),
            let first = found(for: query).first {
@@ -347,7 +340,7 @@ extension NoteEditorView {
         }
     }
 
-    /// Where in `old` a single new line was typed to make `new`, if that's the change.
+    /// Nil unless the whole edit is one new line.
     nonisolated static func insertedNewline(from old: String, to new: String) -> String.Index? {
         guard new.count == old.count + 1 else { return nil }
         var index = old.startIndex, other = new.startIndex
@@ -359,7 +352,6 @@ extension NoteEditorView {
         return index
     }
 
-    /// Writes "@Name " in place of what was typed, and links him if he isn't yet.
     private func link(_ element: Element, for query: Mention.Query) {
         let (newText, cursor) = Mention.inserting(element.webName, for: query, in: text)
         text = newText
@@ -370,7 +362,7 @@ extension NoteEditorView {
         }
     }
 
-    /// Types an @ at the cursor, after a space if needed, so suggestions show.
+    /// After a space if needed, so the @ starts a mention.
     private func insertMention() {
         let at = cursor ?? text.endIndex
         let needsSpace = at > text.startIndex && !text[text.index(before: at)].isWhitespace

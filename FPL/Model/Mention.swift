@@ -5,23 +5,18 @@
 
 import SwiftUI
 
-/// Linking a player by typing @ and part of his name in a note. The note keeps
-/// plain text ("@Saka"); the link is the `NotePlayer`, and highlighting is worked
-/// out from the two when the note is shown.
+/// The note keeps plain text ("@Saka"); the chip is the link.
 enum Mention {
-    /// The "@sak" being typed, from the @ up to the cursor.
     struct Query: Equatable {
         /// Includes the @.
         let range: Range<String.Index>
-        /// What follows the @.
         let text: String
     }
 
     /// Longer than any name, so an @ earlier in the note stops suggesting.
     static let maxQueryLength = 20
 
-    /// The mention being typed just before `cursor`, if any. The @ must start the
-    /// note or follow a space or new line, so an email address isn't one.
+    /// The @ must start the note or follow whitespace, so an email address isn't one.
     nonisolated static func query(in text: String, cursor: String.Index) -> Query? {
         guard cursor <= text.endIndex else { return nil }
         let before = text[..<cursor]
@@ -32,8 +27,7 @@ enum Mention {
         return Query(range: at..<cursor, text: String(typed))
     }
 
-    /// `text` with the query replaced by "@Name " (no extra space if one follows),
-    /// and the cursor just after it.
+    /// No trailing space is added if one follows.
     nonisolated static func inserting(_ name: String, for query: Query, in text: String) -> (text: String, cursor: String.Index) {
         let followedBySpace = query.range.upperBound < text.endIndex && text[query.range.upperBound].isWhitespace
         let mention = "@\(name)" + (followedBySpace ? "" : " ")
@@ -43,8 +37,7 @@ enum Mention {
         return (result, result.index(result.startIndex, offsetBy: offset + (followedBySpace ? 1 : 0)))
     }
 
-    /// Where "@Name" appears for a linked player, not followed by a letter or digit.
-    /// Longer names win, so "@Gabriel Martinelli" isn't cut short by "@Gabriel".
+    /// Whole names only. Longer names win, so "@Gabriel" doesn't cut "@Gabriel M." short.
     nonisolated static func ranges(in text: String, linked: [NotePlayer]) -> [Range<String.Index>] {
         var found: [Range<String.Index>] = []
         for name in Set(linked.map(\.webName)).sorted(by: { $0.count > $1.count }) {
@@ -59,7 +52,6 @@ enum Mention {
         return found.sorted { $0.lowerBound < $1.lowerBound }
     }
 
-    /// The note's text with linked players' mentions in the accent color and bold.
     nonisolated static func highlighted(_ text: String, linked: [NotePlayer]) -> AttributedString {
         var attributed = AttributedString(text)
         for range in ranges(in: text, linked: linked) {
@@ -70,23 +62,20 @@ enum Mention {
         return attributed
     }
 
-    /// The ids of linked players mentioned in `text`.
     nonisolated static func mentionedIDs(in text: String, linked: [NotePlayer]) -> Set<Int> {
         let names = Set(ranges(in: text, linked: linked).map { String(text[$0].dropFirst()) })
         return Set(linked.filter { names.contains($0.webName) }.map(\.id))
     }
 
-    /// What an edit does to mentions, as in Slack.
     struct Edit: Equatable {
         let text: String
         let linked: [NotePlayer]
-        /// Where the cursor goes, in characters, when the text was changed here.
+        /// In characters. Nil when the text is left as typed.
         let cursor: Int?
     }
 
-    /// Deleting into "@Saka" deletes the whole mention, and a player is unlinked once
-    /// the last mention of him is gone. Players linked without a mention, such as from
-    /// the stats popover, are never unlinked by editing the text.
+    /// As in Slack: deleting into "@Saka" removes it whole, and a player is unlinked
+    /// once his last mention goes. Players linked from the stats popover never are.
     nonisolated static func applying(_ new: String, to old: String, linked: [NotePlayer]) -> Edit {
         let before = Array(old), after = Array(new)
         var prefix = 0
@@ -119,7 +108,7 @@ enum Mention {
         return Edit(text: text, linked: linked.filter { !dropped.contains($0.id) }, cursor: cursor)
     }
 
-    /// For matching what's typed: lower case, accents and letters like ß or Ø made plain.
+    /// Folds ß and Ø too, so "gross" finds Groß.
     nonisolated static func folded(_ string: String) -> String {
         string.applyingTransform(StringTransform("Latin-ASCII; Lower"), reverse: false) ?? string.lowercased()
     }

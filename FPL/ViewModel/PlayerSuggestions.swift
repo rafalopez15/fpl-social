@@ -5,7 +5,6 @@
 
 import Foundation
 
-/// Players to suggest while typing an @ mention in a note.
 @MainActor
 final class PlayerSuggestions: ObservableObject {
     enum State: Equatable {
@@ -15,7 +14,7 @@ final class PlayerSuggestions: ObservableObject {
         case failed
     }
 
-    /// A player with the names a mention can start, folded once rather than per keystroke.
+    /// Names are folded once, not per keystroke.
     struct Candidate: Sendable {
         let element: Element
         let keys: [String]
@@ -37,14 +36,13 @@ final class PlayerSuggestions: ObservableObject {
     private(set) var candidates: [Candidate] = []
     private let load: () async throws -> [Element]
 
-    /// - Parameter load: Every player, from `/api/elements`. Not `ElementViewModel`,
-    ///   which loads one position at a time.
+    /// Every player, not `ElementViewModel`'s one position at a time.
     init(load: @escaping () async throws -> [Element] = { try await FPLAPIClient().elements() }) {
         self.load = load
     }
 
-    /// Uses `known` when it's already loaded (Profile's players), and fetches otherwise.
-    /// After a failure only `reload()` (Retry) tries again, not every keystroke.
+    /// `known` is Profile's players, when loaded. After a failure only Retry
+    /// (`reload()`) tries again, not every keystroke.
     func loadIfNeeded(known: [Int: Element] = [:]) async {
         guard state == .idle else { return }
         if !known.isEmpty {
@@ -59,7 +57,7 @@ final class PlayerSuggestions: ObservableObject {
         do {
             use(try await load())
         } catch where error is CancellationError || (error as? URLError)?.code == .cancelled {
-            // Not a failure: the next mention loads again.
+            // The next mention tries again.
             state = .idle
         } catch {
             state = .failed
@@ -75,8 +73,6 @@ final class PlayerSuggestions: ObservableObject {
         Self.suggestions(for: query, in: candidates, squad: squad, linked: linked)
     }
 
-    /// Players a name of whom starts with `query`, ignoring case and accents: your
-    /// squad first, then most total points, then name. Players already linked are left out.
     nonisolated static func suggestions(for query: String, in candidates: [Candidate], squad: Set<Int>,
                                         linked: Set<Int>, limit: Int = limit) -> [Element] {
         let typed = Mention.folded(query.trimmingCharacters(in: .whitespaces))

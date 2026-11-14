@@ -133,14 +133,13 @@ final class FPLUITests: XCTestCase {
         editor.typeText("Bringing in @\(player.prefix(3))")
         let suggestion = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Link \(player), ")).firstMatch
         XCTAssertTrue(suggestion.waitForExistence(timeout: 10))
-        // Return picks the first suggestion, as Tab does on a hardware keyboard.
+        // Return picks the first suggestion.
         editor.typeText("\n")
 
         let chip = app.buttons["Unlink \(player)"]
         XCTAssertTrue(chip.waitForExistence(timeout: 5))
         XCTAssertEqual(editor.value as? String, "Bringing in @\(player) ")
 
-        // Backspacing into the mention deletes it whole, and his chip with it.
         editor.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 2))
         XCTAssertTrue(chip.waitForNonExistence(timeout: 5))
         XCTAssertEqual(editor.value as? String, "Bringing in ")
@@ -197,8 +196,7 @@ private enum Fixtures {
         try XCTUnwrap((object("league")["standings"] as? [[String: Any]])?.first?["entry_name"] as? String)
     }
 
-    /// The first row of All players (one position), or with `elements` the first @
-    /// suggestion with no team linked (everyone): most points, then by name.
+    /// The first row of All players, or with `elements` the first @ suggestion.
     static func topPlayer(in file: String = "elements-position") throws -> String {
         let players = try array(file)
             .filter { $0["can_select"] as? Bool != false && $0["removed"] as? Bool != true }
