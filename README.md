@@ -1,23 +1,20 @@
 # fpl-social
 
-An iOS app for Fantasy Premier League. Browse players by position, sort them, spot injured and suspended players at a glance, and check each player's season and advanced stats.
+An iOS app for Fantasy Premier League: link your FPL team, follow the gameweek, and write down why you made each transfer.
 
-The app is growing into a social FPL app: transfer notes and a feed of friends' activity are planned (tracked in Linear under the Transfer Notes and FPL Social projects). The Feed, Notes and Profile tabs are placeholders until those land.
+The app is growing into a social FPL app: a feed of friends' activity is planned (tracked in Linear under the FPL Social project), and the Feed tab is a placeholder until it lands.
 
-The app reads from [fplAPI](#backend), a FastAPI backend that wraps the official FPL API. You need the backend running locally to see any data.
+The app reads from [fplAPI](#backend), a FastAPI backend that wraps the official FPL API. Debug and Release builds use the production backend; see [Backend](#backend) to test against a preview.
 
 ## Features
 
-- **Tabs** for Feed, Players, Notes and Profile. Only Players is built so far.
-- **Players by position.** Tap the title to switch between goalkeepers, defenders, midfielders and forwards.
-- **Sort** from the top-right menu by points, price, goals, assists or ownership. The arrows button next to it flips between high to low and low to high. The column on the right of each row shows the stat you sorted by.
-- **Search** by short name or full name.
-- **Flagged players.** Doubtful, injured, suspended and unavailable players have a yellow name with a warning triangle in front of it.
-- **Player stats.** The ⓘ button on each row opens a popover with the player's injury or availability news (with when it was last updated), position, team, ownership, fixtures for the next 3 gameweeks with FPL's difficulty ratings, season stats (minutes, goals, assists, clean sheets, bonus, cards and more) and expected stats (xG, xA, xGI, xGC, ICT index).
-- **Team short names** (ARS, MCI, LIV) next to each player.
-- **Notes.** Write notes about who you're watching or holding, from the Notes tab or from a player's stats popover (which links that player). Each note is tagged with the gameweek and stored on your device.
-- **Link your FPL team.** Enter your FPL manager ID on the Profile tab to link your team and see its points and rank. It's saved on your device, no sign-in needed.
-- **Transfer notes.** With your team linked, the app notices new transfers when you open it and asks why you made them. Your reasoning shows in the player's stats popover and on the Notes tab.
+- **Tabs** for Profile, Gameweek, Feed and Notes.
+- **Link your FPL team** on Profile with your FPL manager ID: its points, rank, squad on a pitch, leagues and the season's transfers. Signing in is optional; it syncs your teams and lets you follow others.
+- **Gameweek.** One gameweek's matches by day, with kickoff times and live and final scores. Step between gameweeks with the arrows or the title.
+- **All players**, from Profile. Browse by position, sort by points, price, goals, assists or ownership, and search by short or full name. Doubtful, injured and suspended players are flagged.
+- **Player stats.** A popover with availability news, next fixtures with FPL's difficulty, and season and expected stats.
+- **Notes.** Write notes about who you're watching or holding, from the Notes tab or a player's stats popover. Type @ and part of a name to link a player: the first suggestion is picked with a tap, Return or Tab, linked players show as chips and their mentions are highlighted. Each note is tagged with its gameweek, kept on your device, and synced to your account when you're signed in.
+- **Transfer notes.** With your team linked, the app notices new transfers when you open it and asks why you made them.
 - Pull to refresh.
 
 ## Design
