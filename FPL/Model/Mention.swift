@@ -14,6 +14,9 @@ enum Mention {
 
         /// Return and Tab pick only after a letter, so @ then Return is a new line.
         var picksWithKeyboard: Bool { !text.trimmingCharacters(in: .whitespaces).isEmpty }
+
+        /// Words after a mention ("@Saka is") match nobody, so they don't say so.
+        var showsNoMatches: Bool { !text.contains(" ") }
     }
 
     /// Longer than any name, so an @ earlier in the note stops suggesting.

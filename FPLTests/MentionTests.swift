@@ -65,6 +65,13 @@ struct MentionTests {
         #expect(Mention.query(in: more, cursor: more.endIndex, linked: [gabriel])?.text == "Gabriel M")
     }
 
+    @Test func wordsAfterAMentionDontSayNoPlayersFound() throws {
+        let text = "Bringing in @Saka is"
+        let query = try #require(Mention.query(in: text, cursor: text.endIndex, linked: [Self.saka]))
+        #expect(!query.showsNoMatches)
+        #expect(Self.query("@sakx|")?.showsNoMatches == true)
+    }
+
     @Test func keyboardPicksNeedALetter() {
         #expect(Self.query("Moving @|")?.picksWithKeyboard == false)
         #expect(Self.query("Moving @ |")?.picksWithKeyboard == false)

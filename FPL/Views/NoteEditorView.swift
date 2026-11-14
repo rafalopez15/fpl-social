@@ -260,8 +260,10 @@ extension NoteEditorView {
             case .loaded:
                 let found = found(for: query)
                 if found.isEmpty {
-                    Text("No players found")
-                        .foregroundStyle(Theme.secondaryText)
+                    if query.showsNoMatches {
+                        Text("No players found")
+                            .foregroundStyle(Theme.secondaryText)
+                    }
                 } else {
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: 4) {
