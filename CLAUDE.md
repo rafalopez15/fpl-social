@@ -12,13 +12,16 @@ Rules for one area load from `.claude/rules/` when you open its files: `ui.md`, 
 export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer
 D="platform=iOS Simulator,name=iPhone 18 Pro"   # xcrun simctl list devices available
 
-xcodebuild test -project FPL.xcodeproj -scheme FPL -destination "$D" -only-testing:FPLTests   # unit
+xcodebuild test -project FPL.xcodeproj -scheme FPL -destination "$D" -only-testing:FPLTests FPL_WARNINGS_AS_ERRORS=YES   # unit
 xcodebuild test -project FPL.xcodeproj -scheme FPL -destination "$D" -only-testing:FPLTests/ToastTests   # one suite
 TEST_RUNNER_TSAN_OPTIONS=halt_on_error=1 xcodebuild test -project FPL.xcodeproj -scheme FPL -destination "$D" \
-  -only-testing:FPLTests -enableThreadSanitizer YES   # as CI runs them
-xcodebuild test -project FPL.xcodeproj -scheme FPL -destination "$D" -only-testing:FPLUITests -parallel-testing-enabled NO
+  -only-testing:FPLTests -enableThreadSanitizer YES FPL_WARNINGS_AS_ERRORS=YES   # as CI runs them
+xcodebuild test -project FPL.xcodeproj -scheme FPL -destination "$D" -only-testing:FPLUITests -parallel-testing-enabled NO \
+  FPL_WARNINGS_AS_ERRORS=YES
 swiftlint lint --strict              # or the Docker image in ci.md
 ```
+
+CI treats warnings as errors: keep `FPL_WARNINGS_AS_ERRORS=YES` on the runs before a push (never `SWIFT_TREAT_WARNINGS_AS_ERRORS`, see `ci.md`).
 
 New files under `FPL/` and `FPLTests/` are picked up automatically: never edit `project.pbxproj` by hand.
 
