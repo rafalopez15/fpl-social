@@ -32,6 +32,7 @@ paths:
 - A device-linked team is PUT as `mine` on sign-in without asking, unless the account has it already. A team left by signing out never joins the next account.
 - `transfersSeenUntil` is per team and set only on first link, so switching back still prompts. An automatic switch waits while the transfer prompt is up.
 - Until `TeamSync.hasLoaded`, an empty list isn't "none": show loading or the failure.
+- `TeamSync.refresh()` returns only once a refresh that started after the call has finished: a call while one runs waits for it to go round once more. Don't go back to returning early, which made tests and callers read stale teams.
 - Your own team can't be followed.
 
 ## Team card and transfers
