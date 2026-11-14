@@ -73,6 +73,60 @@ struct MentionTests {
         #expect(result[newCursor...] == "out")
     }
 
+    // MARK: Editing around mentions
+
+    static let saka = NotePlayer(id: 1, webName: "Saka")
+    static let isak = NotePlayer(id: 2, webName: "Isak")
+
+    @Test func backspacingIntoAMentionDeletesItWholeAndUnlinks() {
+        let edit = Mention.applying("Moving @Sak out", to: "Moving @Saka out", linked: [Self.saka, Self.isak])
+        #expect(edit.text == "Moving  out")
+        #expect(edit.cursor == 7)
+        #expect(edit.linked == [Self.isak])
+    }
+
+    @Test func deletingTheSpaceAfterAMentionKeepsIt() {
+        let edit = Mention.applying("Moving @Saka", to: "Moving @Saka ", linked: [Self.saka])
+        #expect(edit.text == "Moving @Saka")
+        #expect(edit.cursor == nil)
+        #expect(edit.linked == [Self.saka])
+    }
+
+    @Test func aSelectionAcrossAMentionDeletesItWhole() {
+        // "ing @Sa" selected and deleted.
+        let edit = Mention.applying("Movka out", to: "Moving @Saka out", linked: [Self.saka])
+        #expect(edit.text == "Mov out")
+        #expect(edit.linked.isEmpty)
+    }
+
+    @Test func aPlayerStaysLinkedWhileAnotherMentionOfHimIsLeft() {
+        let edit = Mention.applying("@Saka then ", to: "@Saka then @Saka", linked: [Self.saka])
+        #expect(edit.text == "@Saka then ")
+        #expect(edit.linked == [Self.saka])
+    }
+
+    @Test func playersLinkedWithoutAMentionStay() {
+        // Isak came from the stats popover: never mentioned, so typing doesn't unlink him.
+        let edit = Mention.applying("Isa", to: "Isak", linked: [Self.isak])
+        #expect(edit.text == "Isa")
+        #expect(edit.linked == [Self.isak])
+    }
+
+    @Test func typingLeavesMentionsAlone() {
+        let edit = Mention.applying("Moving @Saka out now", to: "Moving @Saka out", linked: [Self.saka])
+        #expect(edit.text == "Moving @Saka out now")
+        #expect(edit.linked == [Self.saka])
+    }
+
+    @Test func spotsReturnTypedAfterAMention() throws {
+        let at = try #require(NoteEditorView.insertedNewline(from: "Moving @sak", to: "Moving @sak\n"))
+        #expect(Mention.query(in: "Moving @sak", cursor: at)?.text == "sak")
+        let middle = try #require(NoteEditorView.insertedNewline(from: "@sa out", to: "@sa\n out"))
+        #expect(Mention.query(in: "@sa out", cursor: middle)?.text == "sa")
+        #expect(NoteEditorView.insertedNewline(from: "Moving", to: "Movings") == nil)
+        #expect(NoteEditorView.insertedNewline(from: "Moving", to: "Moving\n\n") == nil)
+    }
+
     // MARK: Suggestions
 
     @Test func suggestsByAnyNameIgnoringCaseAndAccents() throws {

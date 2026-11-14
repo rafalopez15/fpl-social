@@ -70,6 +70,55 @@ enum Mention {
         return attributed
     }
 
+    /// The ids of linked players mentioned in `text`.
+    nonisolated static func mentionedIDs(in text: String, linked: [NotePlayer]) -> Set<Int> {
+        let names = Set(ranges(in: text, linked: linked).map { String(text[$0].dropFirst()) })
+        return Set(linked.filter { names.contains($0.webName) }.map(\.id))
+    }
+
+    /// What an edit does to mentions, as in Slack.
+    struct Edit: Equatable {
+        let text: String
+        let linked: [NotePlayer]
+        /// Where the cursor goes, in characters, when the text was changed here.
+        let cursor: Int?
+    }
+
+    /// Deleting into "@Saka" deletes the whole mention, and a player is unlinked once
+    /// the last mention of him is gone. Players linked without a mention, such as from
+    /// the stats popover, are never unlinked by editing the text.
+    nonisolated static func applying(_ new: String, to old: String, linked: [NotePlayer]) -> Edit {
+        let before = Array(old), after = Array(new)
+        var prefix = 0
+        while prefix < min(before.count, after.count), before[prefix] == after[prefix] { prefix += 1 }
+        var suffix = 0
+        while suffix < min(before.count, after.count) - prefix,
+              before[before.count - 1 - suffix] == after[after.count - 1 - suffix] { suffix += 1 }
+        // before[prefix..<removedEnd] was replaced by `inserted`.
+        let removedEnd = before.count - suffix
+        let inserted = after[prefix..<(after.count - suffix)]
+
+        var text = new
+        var cursor: Int?
+        if removedEnd > prefix {
+            var lower = prefix, upper = removedEnd
+            for range in ranges(in: old, linked: linked) {
+                let start = old.distance(from: old.startIndex, to: range.lowerBound)
+                let end = old.distance(from: old.startIndex, to: range.upperBound)
+                if start < removedEnd && end > prefix {
+                    lower = min(lower, start)
+                    upper = max(upper, end)
+                }
+            }
+            if lower != prefix || upper != removedEnd {
+                text = String(before[..<lower]) + String(inserted) + String(before[upper...])
+                cursor = lower + inserted.count
+            }
+        }
+        let dropped = mentionedIDs(in: old, linked: linked).subtracting(mentionedIDs(in: text, linked: linked))
+        return Edit(text: text, linked: linked.filter { !dropped.contains($0.id) }, cursor: cursor)
+    }
+
     /// For matching what's typed: lower case, accents and letters like ß or Ø made plain.
     nonisolated static func folded(_ string: String) -> String {
         string.applyingTransform(StringTransform("Latin-ASCII; Lower"), reverse: false) ?? string.lowercased()

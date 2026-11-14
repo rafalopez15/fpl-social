@@ -200,9 +200,9 @@ struct NoteEditorView: View {
     private var editor: some View {
         TextEditor(text: $text, selection: $selection)
             .focused($isEditorFocused)
-            .onChange(of: text) {
-                if text.unicodeScalars.count > Note.maxTextLength { text = Note.capped(text) }
-            }
+            .onChange(of: text) { old, new in edited(from: old, to: new) }
+            // A hardware keyboard's Tab or Return picks the first suggestion.
+            .onKeyPress(keys: [.tab, .return]) { _ in pickFirstSuggestion() ? .handled : .ignored }
             .scrollContentBackground(.hidden)
             .padding(8)
             .background(Theme.surface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
@@ -252,7 +252,7 @@ extension NoteEditorView {
             case .failed:
                 Button("Couldn't load players. Retry") { Task { await suggestions.reload() } }
             case .loaded:
-                let found = suggestions.suggestions(for: query.text, squad: squadIDs, linked: Set(players.map(\.id)))
+                let found = found(for: query)
                 if found.isEmpty {
                     Text("No players found")
                         .foregroundStyle(Theme.secondaryText)
@@ -260,7 +260,7 @@ extension NoteEditorView {
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: 4) {
                             ForEach(found) { element in
-                                suggestion(element, for: query)
+                                suggestion(element, for: query, isFirst: element.id == found.first?.id)
                             }
                         }
                     }
@@ -276,7 +276,13 @@ extension NoteEditorView {
         .accessibilityLabel("Mention a player")
     }
 
-    private func suggestion(_ element: Element, for query: Mention.Query) -> some View {
+    /// The players to suggest for `query`.
+    private func found(for query: Mention.Query) -> [Element] {
+        suggestions.suggestions(for: query.text, squad: squadIDs, linked: Set(players.map(\.id)))
+    }
+
+    /// The first suggestion is marked: Return or Tab picks it.
+    private func suggestion(_ element: Element, for query: Mention.Query, isFirst: Bool) -> some View {
         let team = lookups.teams[element.team]
         return Button {
             link(element, for: query)
@@ -290,15 +296,67 @@ extension NoteEditorView {
                         .foregroundStyle(Theme.secondaryText)
                 }
             }
-            .padding(.horizontal, 8)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(isFirst ? Theme.accent.opacity(0.18) : .clear, in: Capsule())
+            .overlay { if isFirst { Capsule().strokeBorder(Theme.accent.opacity(0.6)) } }
             .frame(minHeight: 44)
         }
         .accessibilityLabel("Link " + Self.description(of: element, team: team))
+        .accessibilityHint(isFirst ? "Return also picks this player." : "")
     }
 
     /// "Saka, Arsenal, Midfielder"
     nonisolated static func description(of element: Element, team: Team?) -> String {
         [element.webName, team?.name, element.position?.singularTitle].compactMap { $0 }.joined(separator: ", ")
+    }
+
+    /// Picks the first suggestion for the mention being typed. False when there's none.
+    private func pickFirstSuggestion() -> Bool {
+        guard suggestions.state == .loaded, let query = mentionQuery, let first = found(for: query).first
+        else { return false }
+        link(first, for: query)
+        return true
+    }
+
+    /// After each change to the text: caps its length, lets Return pick a suggestion,
+    /// and deletes mentions whole and unlinks their players (`Mention.applying`).
+    private func edited(from old: String, to new: String) {
+        if new.unicodeScalars.count > Note.maxTextLength {
+            text = Note.capped(new)
+            return
+        }
+        guard canLinkPlayers else { return }
+        // The iPhone keyboard has no Tab: Return typed just after "@sak" picks instead.
+        if new.count == old.count + 1, let at = Self.insertedNewline(from: old, to: new),
+           suggestions.state == .loaded, let query = Mention.query(in: old, cursor: at),
+           let first = found(for: query).first {
+            text = old
+            link(first, for: query)
+            return
+        }
+        let edit = Mention.applying(new, to: old, linked: players)
+        if edit.text != new {
+            text = edit.text
+            if let cursor = edit.cursor {
+                selection = TextSelection(insertionPoint: text.index(text.startIndex, offsetBy: cursor))
+            }
+        }
+        if edit.linked != players {
+            withAnimation(reduceMotion ? nil : .spring(duration: 0.3, bounce: 0.2)) { players = edit.linked }
+        }
+    }
+
+    /// Where in `old` a single new line was typed to make `new`, if that's the change.
+    nonisolated static func insertedNewline(from old: String, to new: String) -> String.Index? {
+        guard new.count == old.count + 1 else { return nil }
+        var index = old.startIndex, other = new.startIndex
+        while index < old.endIndex, old[index] == new[other] {
+            index = old.index(after: index)
+            other = new.index(after: other)
+        }
+        guard new[other] == "\n", old[index...] == new[new.index(after: other)...] else { return nil }
+        return index
     }
 
     /// Writes "@Name " in place of what was typed, and links him if he isn't yet.
