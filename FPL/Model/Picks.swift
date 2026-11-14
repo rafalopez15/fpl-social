@@ -123,6 +123,41 @@ struct ManagerPicks: Decodable, Equatable {
     }
 }
 
+/// A team's points in one gameweek.
+struct GameweekPoints: Equatable {
+    let gameweek: Int
+    let points: Int
+    var bench: Int? = nil
+    /// The live sum, which can still move. False for FPL's numbers.
+    let isLive: Bool
+}
+
+extension ManagerPicks {
+    /// Each pick's live points times his multiplier, and the bench's (multiplier 0)
+    /// own points. Unknown points count 0. Nil if a pick has no multiplier.
+    func liveTotals(_ live: LivePoints) -> (points: Int, bench: Int)? {
+        var points = 0, bench = 0
+        for pick in picks {
+            guard let multiplier = pick.multiplier else { return nil }
+            let own = live.points[pick.element] ?? 0
+            if multiplier == 0 { bench += own } else { points += own * multiplier }
+        }
+        return (points, bench)
+    }
+
+    /// The live sum until FPL confirms the gameweek, then FPL's numbers, which lag
+    /// during matches. FPL's too without live points or the picks' `event`.
+    func gameweekPoints(live: LivePoints?, event: Event?) -> GameweekPoints? {
+        guard let gameweek = entryHistory?.event else { return nil }
+        if let live, live.gameweek == gameweek, let event, event.id == gameweek, !event.isConfirmed,
+           let totals = liveTotals(live) {
+            return GameweekPoints(gameweek: gameweek, points: totals.points, bench: totals.bench, isLive: true)
+        }
+        guard let points = entryHistory?.points else { return nil }
+        return GameweekPoints(gameweek: gameweek, points: points, bench: entryHistory?.pointsOnBench, isLive: false)
+    }
+}
+
 /// One player's gameweek from `GET /api/events/{gw}/live`. Nulls mean unknown, not 0.
 struct LiveElement: Decodable, Equatable {
     /// `Element.id`.

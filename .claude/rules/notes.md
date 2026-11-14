@@ -21,6 +21,7 @@ paths:
 - Flushing stops at the first failure a retry could fix (offline, 503, signed out); a 404 or 422 drops that change so it can't block the rest.
 - Signing out removes the account's notes, waiting changes and cursor. Device-only notes (`accountID` nil) stay.
 - Undo (`NoteSync.restore`) keeps the sync id and sets `updatedAt` to now, so it beats the delete.
+- A header's points come from the same function as Profile's (`LinkedTeamStore.gameweekPoints(events:)`, through `GameweekScore.score(for:history:squad:)`), so a live gameweek matches the team card; other gameweeks use the history.
 - Text is capped at 5,000 code points (`Note.maxTextLength`), counted as the API does.
 
 ## Behaviour

@@ -15,7 +15,7 @@ final class FPLUITests: XCTestCase {
     @MainActor
     override func setUp() async throws {
         continueAfterFailure = false
-        let server = try FixtureServer()
+        let server = try FixtureServer(overrides: name.contains("testALiveGameweek") ? Fixtures.liveGameweek() : [:])
         let baseURL = try server.start()
         self.server = server
         app = XCUIApplication()
@@ -40,6 +40,26 @@ final class FPLUITests: XCTestCase {
         try linkManager1()
         XCTAssertTrue(element(labelled: "Gameweek \(squad.gameweek) · \(squad.points) pts").waitForExistence(timeout: 10))
         XCTAssertTrue(element(labelled: "\(squad.captain), \(squad.captainTeam)").waitForExistence(timeout: 10))
+    }
+
+    /// With the gameweek unconfirmed and FPL's numbers behind, every screen shows
+    /// the sum of the cards, marked live.
+    @MainActor
+    func testALiveGameweek() throws {
+        let squad = try Fixtures.squad()
+        let live = try Fixtures.liveSum()
+        try linkManager1()
+
+        let header = element(labelled: "Gameweek \(squad.gameweek) · \(live.points) pts")
+        XCTAssertTrue(header.waitForExistence(timeout: 10))
+        XCTAssertTrue(header.label.contains("live"), header.label)
+        XCTAssertTrue(header.label.contains("\(live.bench) pts on the bench"), header.label)
+
+        let stat = element(labelled: "GW\(squad.gameweek) points")
+        XCTAssertTrue(stat.label.contains("\(live.points)") && stat.label.contains("live"), stat.label)
+
+        app.buttons["Notes"].firstMatch.tap()
+        XCTAssertTrue(element(labelled: "\(live.points) points, live").waitForExistence(timeout: 10))
     }
 
     @MainActor
@@ -221,6 +241,48 @@ private enum Fixtures {
                      points: try XCTUnwrap(history["points"] as? Int),
                      captain: try XCTUnwrap(captain["web_name"] as? String),
                      captainTeam: try XCTUnwrap(team["name"] as? String))
+    }
+
+    /// Live points times multiplier, and the bench's own.
+    static func liveSum() throws -> (points: Int, bench: Int) {
+        let live = Dictionary(try array("live").compactMap { row in
+            (row["id"] as? Int).map { ($0, row["total_points"] as? Int ?? 0) }
+        }, uniquingKeysWith: { first, _ in first })
+        var points = 0, bench = 0
+        for pick in try XCTUnwrap(object("picks")["picks"] as? [[String: Any]]) {
+            let own = live[try XCTUnwrap(pick["element"] as? Int)] ?? 0
+            let multiplier = try XCTUnwrap(pick["multiplier"] as? Int)
+            if multiplier == 0 { bench += own } else { points += own * multiplier }
+        }
+        return (points, bench)
+    }
+
+    /// The squad's gameweek unconfirmed, and the manager, picks and history each
+    /// behind the live points by a different amount.
+    static func liveGameweek() throws -> [String: Data] {
+        let gameweek = try squad().gameweek
+        let events = try array("events").map { event -> [String: Any] in
+            guard event["id"] as? Int == gameweek else { return event }
+            return event.merging(["finished": false, "data_checked": false]) { $1 }
+        }
+
+        var manager = try object("manager")
+        manager["summary_event_points"] = try liveSum().points - 12
+
+        var picks = try object("picks")
+        var entry = try XCTUnwrap(picks["entry_history"] as? [String: Any])
+        entry["points"] = try liveSum().points - 7
+        entry["points_on_bench"] = try liveSum().bench + 5
+        picks["entry_history"] = entry
+
+        var history = try object("history")
+        history["current"] = try XCTUnwrap(history["current"] as? [[String: Any]]).map { row -> [String: Any] in
+            guard row["event"] as? Int == gameweek else { return row }
+            return row.merging(["points": try liveSum().points - 3]) { $1 }
+        }
+
+        return try ["events": events, "manager": manager, "picks": picks, "history": history]
+            .mapValues { try JSONSerialization.data(withJSONObject: $0) }
     }
 
     private static func json(_ name: String) throws -> Any {

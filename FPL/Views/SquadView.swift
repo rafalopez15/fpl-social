@@ -11,6 +11,7 @@ import SwiftUI
 /// as the players list.
 struct SquadSection: View {
     @EnvironmentObject private var teamStore: LinkedTeamStore
+    @EnvironmentObject private var gameweeks: GameweekStore
     @ObservedObject private var lookups = TeamsAndFixturesStore.shared
     /// The gameweek picked in the stepper; nil follows the latest squad. Profile
     /// owns it, so pull to refresh reloads the gameweek being viewed.
@@ -25,6 +26,12 @@ struct SquadSection: View {
 
     private var livePoints: LivePoints? {
         earlier.map { teamStore.earlierPoints[$0] } ?? teamStore.livePoints
+    }
+
+    /// Earlier gameweeks are confirmed, so they show FPL's numbers.
+    private func points(for picks: ManagerPicks) -> GameweekPoints? {
+        earlier == nil ? teamStore.gameweekPoints(events: gameweeks.events)
+            : picks.gameweekPoints(live: nil, event: nil)
     }
 
     var body: some View {
@@ -49,7 +56,8 @@ struct SquadSection: View {
             case .loading:
                 SquadPlaceholder()
             case .loaded(let picks):
-                SquadCard(picks: picks, players: teamStore.players, livePoints: livePoints, lookups: lookups)
+                SquadCard(picks: picks, points: points(for: picks), players: teamStore.players,
+                          livePoints: livePoints, lookups: lookups)
                 if earlier == nil {
                     // FPL publishes picks at the deadline, so newer transfers aren't in them yet.
                     Text("Updates at each deadline, so transfers made since the last one aren't shown yet.")
@@ -152,6 +160,8 @@ private struct GameweekStepper: View {
 
 private struct SquadCard: View {
     let picks: ManagerPicks
+    /// The header's points; nil shows the gameweek alone.
+    let points: GameweekPoints?
     let players: [Int: Element]
     let livePoints: LivePoints?
     @ObservedObject var lookups: TeamsAndFixturesStore
@@ -183,13 +193,15 @@ private struct SquadCard: View {
         .background(Theme.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 
-    /// "Gameweek 9 · 45 pts" over "15 pts on the bench", with the chip on the right.
+    /// "Gameweek 9 · 45 pts" and a Live tag over "15 pts on the bench", with the chip on the right.
     private var header: some View {
         HStack(alignment: .top) {
             VStack(alignment: .leading, spacing: 2) {
-                Text(title)
-                    .font(.headline)
-                if let bench = picks.entryHistory?.pointsOnBench {
+                LiveTagged(isLive: points?.isLive == true) {
+                    Text(title)
+                        .font(.headline)
+                }
+                if let bench = points?.bench {
                     Text("\(bench) pts on the bench")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
@@ -215,7 +227,7 @@ private struct SquadCard: View {
     private var title: String {
         var parts: [String] = []
         if let event = picks.entryHistory?.event { parts.append("Gameweek \(event)") }
-        if let points = picks.entryHistory?.points { parts.append("\(points) pts") }
+        if let points { parts.append("\(points.points) pts") }
         return parts.isEmpty ? "Your squad" : parts.joined(separator: " · ")
     }
 
