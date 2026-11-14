@@ -35,15 +35,14 @@ final class FakeTeamsAPI: TeamsAPI, @unchecked Sendable {
     func update(_ change: @Sendable (inout State) -> Void) { lock.withLock { change(&$0) } }
 
     func myTeams(accessToken: String) async throws -> [AccountTeam] {
-        let delay = lock.withLock { state in
+        // Read before the delay, as the server answers with the list as it was then.
+        let (delay, teams, error) = lock.withLock { state in
             state.lists += 1
-            return state.listDelay
+            return (state.listDelay, state.teams, state.listError)
         }
         if let delay { try? await Task.sleep(for: delay) }
-        return try lock.withLock { state in
-            if let error = state.listError { throw error }
-            return state.teams
-        }
+        if let error { throw error }
+        return teams
     }
 
     func putTeam(id: Int, relation: AccountTeam.Relation, accessToken: String) async throws -> AccountTeam {
@@ -112,7 +111,8 @@ struct TeamSyncTests {
         let first = Task { await sync.refresh() }
         await waitFor { api.state.lists == 1 }
 
-        // Added on another device after the first refresh read the list.
+        // Added on another device after the first refresh read the list, so only
+        // the second one sees it.
         api.update { $0.teams.insert(FakeTeamsAPI.team(6, name: "Club 6"), at: 0) }
         await sync.refresh()
         #expect(api.state.lists == 2)
