@@ -22,6 +22,8 @@ final class FakeTeamsAPI: TeamsAPI, @unchecked Sendable {
         var failingManagers: Set<Int> = []
         /// Thrown by `myTeams`, as when offline.
         var listError: Error?
+        /// How long `myTeams` takes, so a test can call while a refresh is running.
+        var listDelay: Duration?
         /// Lookups of a team's details, and the most running at once.
         var managerCalls = 0
         var running = 0
@@ -33,8 +35,12 @@ final class FakeTeamsAPI: TeamsAPI, @unchecked Sendable {
     func update(_ change: @Sendable (inout State) -> Void) { lock.withLock { change(&$0) } }
 
     func myTeams(accessToken: String) async throws -> [AccountTeam] {
-        try lock.withLock { state in
+        let delay = lock.withLock { state in
             state.lists += 1
+            return state.listDelay
+        }
+        if let delay { try? await Task.sleep(for: delay) }
+        return try lock.withLock { state in
             if let error = state.listError { throw error }
             return state.teams
         }
@@ -98,6 +104,20 @@ struct TeamSyncTests {
     /// The sign-in's sync runs in its own task, and names load off the main actor.
     func waitFor(_ condition: () -> Bool) async {
         for _ in 0..<400 where !condition() { try? await Task.sleep(for: .milliseconds(5)) }
+    }
+
+    @Test func aRefreshAskedForMeanwhileWaitsForOneThatStartsAfterIt() async {
+        api.update { $0.teams = [FakeTeamsAPI.team(5, name: "Club 5")]; $0.listDelay = .milliseconds(50) }
+        let (sync, _) = makeSync()
+        let first = Task { await sync.refresh() }
+        await waitFor { api.state.lists == 1 }
+
+        // Added on another device after the first refresh read the list.
+        api.update { $0.teams.insert(FakeTeamsAPI.team(6, name: "Club 6"), at: 0) }
+        await sync.refresh()
+        #expect(api.state.lists == 2)
+        #expect(sync.mine.map(\.managerId) == [6, 5])
+        await first.value
     }
 
     @Test func linkingSignedOutStaysOnTheDevice() async throws {
