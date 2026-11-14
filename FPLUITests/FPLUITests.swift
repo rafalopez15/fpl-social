@@ -119,6 +119,32 @@ final class FPLUITests: XCTestCase {
         XCTAssertTrue(undo.waitForNonExistence(timeout: 5))
     }
 
+    @MainActor
+    func testLinkingAPlayerWithAnAtMention() throws {
+        let gameweek = try Fixtures.currentGameweek()
+        let player = try Fixtures.topPlayer(in: "elements")
+        app.buttons["Notes"].firstMatch.tap()
+        let add = app.buttons["Add note to Gameweek \(gameweek)"]
+        XCTAssertTrue(add.waitForExistence(timeout: 10))
+        add.tap()
+
+        let editor = app.textViews["Note"]
+        XCTAssertTrue(editor.waitForExistence(timeout: 5))
+        editor.typeText("Bringing in @\(player.prefix(3))")
+        let suggestion = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Link \(player), ")).firstMatch
+        XCTAssertTrue(suggestion.waitForExistence(timeout: 10))
+        // Return picks the first suggestion.
+        editor.typeText("\n")
+
+        let chip = app.buttons["Unlink \(player)"]
+        XCTAssertTrue(chip.waitForExistence(timeout: 5))
+        XCTAssertEqual(editor.value as? String, "Bringing in @\(player) ")
+
+        editor.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 2))
+        XCTAssertTrue(chip.waitForNonExistence(timeout: 5))
+        XCTAssertEqual(editor.value as? String, "Bringing in ")
+    }
+
     private var playerListRequests: Int {
         server?.requestedPaths.filter { $0.hasPrefix("/api/elements/position/") }.count ?? 0
     }
@@ -170,9 +196,9 @@ private enum Fixtures {
         try XCTUnwrap((object("league")["standings"] as? [[String: Any]])?.first?["entry_name"] as? String)
     }
 
-    /// The first row of All players: most points, then by name, as the list sorts.
-    static func topPlayer() throws -> String {
-        let players = try array("elements-position")
+    /// The first row of All players, or with `elements` the first @ suggestion.
+    static func topPlayer(in file: String = "elements-position") throws -> String {
+        let players = try array(file)
             .filter { $0["can_select"] as? Bool != false && $0["removed"] as? Bool != true }
             .map { (name: $0["web_name"] as? String ?? "", points: $0["total_points"] as? Int ?? 0) }
         let top = players.min { ($1.points, $0.name) < ($0.points, $1.name) }

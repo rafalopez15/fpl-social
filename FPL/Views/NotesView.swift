@@ -328,7 +328,7 @@ struct NoteRow: View {
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
             } else {
-                Text(note.text)
+                Text(Mention.highlighted(note.text, linked: note.players))
                     .lineLimit(3)
                     .multilineTextAlignment(.leading)
             }
