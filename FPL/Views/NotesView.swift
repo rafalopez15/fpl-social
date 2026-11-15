@@ -90,12 +90,15 @@ struct NotesView: View {
 
             // One card per gameweek: the header is the card's first row, so swipe
             // to delete, undo and VoiceOver keep working as a normal list.
+            let squadPoints = linkedTeam.gameweekPoints(events: gameweeks.events)
             ForEach(NoteSection.sections(for: notes, currentGameweek: gameweeks.current)) { section in
                 Section {
                     GameweekHeader(section: section,
                                    currentGameweek: gameweeks.current,
                                    deadline: section.gameweek.flatMap(gameweeks.deadline(for:)),
-                                   score: section.gameweek.flatMap { linkedTeam.history?.score(for: $0) }) { gameweek in
+                                   score: section.gameweek.flatMap {
+                                       GameweekScore.score(for: $0, history: linkedTeam.history, squad: squadPoints)
+                                   }) { gameweek in
                         editor = EditorTarget(gameweek: gameweek)
                     }
                     .themedRow()
@@ -255,10 +258,15 @@ private struct GameweekHeader: View {
 /// "▲ 338K". The arrow is green up, red down, so the shape and color both tell it.
 private struct ScoreColumn: View {
     let score: GameweekScore
+    @Environment(\.dynamicTypeSize) private var typeSize
+
+    /// Beside the points the tag squeezes the title from this size up.
+    private var tagGoesUnder: Bool { typeSize >= .xLarge }
 
     var body: some View {
         VStack(alignment: .trailing, spacing: 2) {
             HStack(spacing: 4) {
+                if score.isLive, !tagGoesUnder { LiveTag() }
                 if score.hitCost > 0 {
                     Text("−\(score.hitCost)")
                         .font(.caption.weight(.semibold))
@@ -281,6 +289,7 @@ private struct ScoreColumn: View {
                         .foregroundStyle(.secondary)
                 }
             }
+            if score.isLive, tagGoesUnder { LiveTag() }
         }
         // The header's label already reads these out.
         .accessibilityHidden(true)
@@ -297,7 +306,8 @@ extension GameweekScore {
     var accessibilityDescription: String {
         var parts: [String] = []
         if let points {
-            parts.append(hitCost > 0 ? "\(points) points, minus \(hitCost) for transfers" : "\(points) points")
+            let points = isLive ? "\(points) points, live" : "\(points) points"
+            parts.append(hitCost > 0 ? "\(points), minus \(hitCost) for transfers" : points)
         }
         if let overallRank {
             var rank = "Overall rank \(overallRank.formatted())"

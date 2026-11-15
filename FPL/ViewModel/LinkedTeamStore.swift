@@ -359,6 +359,15 @@ final class LinkedTeamStore: ObservableObject {
     }
 }
 
+extension LinkedTeamStore {
+    /// The latest squad's gameweek points. `events` say whether FPL has confirmed it.
+    func gameweekPoints(events: [Event]) -> GameweekPoints? {
+        guard case .loaded(let picks) = squad else { return nil }
+        let event = events.first { $0.id == picks.entryHistory?.event }
+        return picks.gameweekPoints(live: livePoints, event: event)
+    }
+}
+
 /// Profile's squad section: loading, the squad, none yet, or failed.
 enum SquadState: Equatable {
     case loading
