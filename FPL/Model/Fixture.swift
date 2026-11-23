@@ -5,7 +5,8 @@
 
 import Foundation
 
-/// A Premier League match from `GET /api/fixtures`.
+/// A Premier League match from `GET /api/fixtures`, or live from
+/// `GET /api/events/{gw}/fixtures`.
 struct Fixture: Codable, Identifiable, Hashable {
     let id: Int
     /// Gameweek. Nil while a postponed match hasn't been rescheduled.
@@ -26,6 +27,63 @@ struct Fixture: Codable, Identifiable, Hashable {
     let finished: Bool
     let teamHScore: Int?
     let teamAScore: Int?
+    /// Minutes played. Only the live endpoint sends it.
+    var minutes: Int? = nil
+    /// True at full time, a day or more before `finished`. Only the live endpoint sends it.
+    var finishedProvisional: Bool? = nil
+}
+
+// MARK: - A gameweek's matches
+
+extension Fixture {
+    enum MatchState: Equatable {
+        case notStarted
+        case live(minute: Int)
+        case finished
+        /// No kickoff time yet.
+        case postponed
+    }
+
+    /// Only for `/events/{gw}/fixtures`: the stored list has no `finishedProvisional`,
+    /// so its matches would read as live until `finished`, a day or more after full time.
+    var matchState: MatchState {
+        guard kickoffTime != nil else { return .postponed }
+        if finishedProvisional == true || finished { return .finished }
+        return started ? .live(minute: minutes ?? 0) : .notStarted
+    }
+
+    /// True once every match with a kickoff time is over. False with none.
+    static func allPlayed(_ fixtures: [Fixture]) -> Bool {
+        let scheduled = fixtures.filter { $0.kickoffTime != nil }
+        return !scheduled.isEmpty && scheduled.allSatisfy { $0.matchState == .finished }
+    }
+
+    /// The gameweek the Gameweek tab opens on: the current one, or the next once
+    /// every match of the current one has been played.
+    static func gameweekToOpen(current: Int, next: Int?, currentFixtures: [Fixture]) -> Int {
+        guard let next, allPlayed(currentFixtures) else { return current }
+        return next
+    }
+}
+
+/// One day's matches in a gameweek, in kickoff order.
+struct FixtureDay: Identifiable, Equatable {
+    /// The start of the day in the user's time zone.
+    let day: Date
+    let fixtures: [Fixture]
+
+    var id: Date { day }
+
+    /// Matches grouped by the day they kick off in `calendar`'s time zone, earliest
+    /// first, and the postponed ones (no kickoff time) apart.
+    static func days(for fixtures: [Fixture], calendar: Calendar = .current) -> (days: [FixtureDay], postponed: [Fixture]) {
+        let scheduled = fixtures.filter { $0.kickoffTime != nil }
+            .sorted { ($0.kickoffTime!, $0.id) < ($1.kickoffTime!, $1.id) }
+        let days = Dictionary(grouping: scheduled) { calendar.startOfDay(for: $0.kickoffTime!) }
+            .map { FixtureDay(day: $0.key, fixtures: $0.value) }
+            .sorted { $0.day < $1.day }
+        return (days, fixtures.filter { $0.kickoffTime == nil })
+    }
 }
 
 /// A gameweek from `GET /api/events`. Only the fields the app uses are decoded.
@@ -96,18 +154,38 @@ struct FixtureSchedule {
         guard end >= nextGameweek else { return [] }
 
         return (nextGameweek...end).map { gameweek in
-            let fixtures = (fixturesByGameweek[gameweek] ?? []).compactMap { fixture -> TeamFixture? in
-                if fixture.teamH == team {
-                    return TeamFixture(id: fixture.id, opponent: fixture.teamA, isHome: true,
-                                       difficulty: fixture.teamHDifficulty)
-                }
-                if fixture.teamA == team {
-                    return TeamFixture(id: fixture.id, opponent: fixture.teamH, isHome: false,
-                                       difficulty: fixture.teamADifficulty)
-                }
-                return nil
-            }
+            let fixtures = (fixturesByGameweek[gameweek] ?? []).compactMap { $0.side(of: team) }
             return GameweekFixtures(gameweek: gameweek, fixtures: fixtures)
         }
+    }
+
+    /// The team's next `count` matches still to kick off, soonest first, the current
+    /// gameweek's included. A double gameweek counts as two.
+    func next(_ count: Int = 5, for team: Int) -> [NextFixture] {
+        fixturesByGameweek.values.joined()
+            .sorted { ($0.kickoffTime ?? .distantFuture, $0.id) < ($1.kickoffTime ?? .distantFuture, $1.id) }
+            .compactMap { fixture in
+                guard let side = fixture.side(of: team), let gameweek = fixture.event else { return nil }
+                return NextFixture(gameweek: gameweek, kickoffTime: fixture.kickoffTime, fixture: side)
+            }
+            .prefix(count).map { $0 }
+    }
+}
+
+/// One of a team's coming matches, with its gameweek and kickoff.
+struct NextFixture: Identifiable, Hashable {
+    let gameweek: Int
+    let kickoffTime: Date?
+    let fixture: TeamFixture
+
+    var id: Int { fixture.id }
+}
+
+extension Fixture {
+    /// The match from `team`'s side. Nil if `team` isn't playing in it.
+    func side(of team: Int) -> TeamFixture? {
+        if teamH == team { return TeamFixture(id: id, opponent: teamA, isHome: true, difficulty: teamHDifficulty) }
+        if teamA == team { return TeamFixture(id: id, opponent: teamH, isHome: false, difficulty: teamADifficulty) }
+        return nil
     }
 }

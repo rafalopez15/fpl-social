@@ -1,0 +1,21 @@
+# Default rules plus one they miss. Allowlist false positives narrowly, never by
+# turning a rule off.
+[extend]
+useDefault = true
+
+# Caught wherever it is, not only next to a word like "key".
+[[rules]]
+id = "supabase-secret-key"
+description = "Supabase secret key"
+regex = '''\b(sb_secret_[A-Za-z0-9_-]{20,})\b'''
+secretGroup = 1
+keywords = ["sb_secret_"]
+
+# Publishable keys are meant to ship in the app. AND: the path alone would
+# skip every secret in the project file.
+[[allowlists]]
+description = "Supabase publishable key in the Xcode project"
+condition = "AND"
+paths = ['''^FPL\.xcodeproj/project\.pbxproj$''']
+regexTarget = "match"
+regexes = ['''sb_publishable_[A-Za-z0-9_-]+''']

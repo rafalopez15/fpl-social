@@ -96,6 +96,24 @@ final class FPLUITests: XCTestCase {
     }
 
     @MainActor
+    func testViewingAGameweeksFixtures() throws {
+        let gameweek = try Fixtures.openingGameweek()
+        let match = try Fixtures.firstMatch()
+        app.buttons["Gameweek"].firstMatch.tap()
+        XCTAssertTrue(app.buttons["Gameweek \(gameweek)"].waitForExistence(timeout: 10))
+        XCTAssertTrue(element(labelled: match).waitForExistence(timeout: 10))
+
+        app.buttons["Next gameweek"].tap()
+        XCTAssertTrue(app.buttons["Gameweek \(gameweek + 1)"].waitForExistence(timeout: 5))
+        XCTAssertTrue(element(labelled: match).waitForExistence(timeout: 10))
+
+        // The home team's name, in the row's left half, opens its next fixtures.
+        element(labelled: match).coordinate(withNormalizedOffset: CGVector(dx: 0.2, dy: 0.5)).tap()
+        let sheet = NSPredicate(format: "label BEGINSWITH 'NEXT ' OR label == 'No upcoming fixtures.'")
+        XCTAssertTrue(app.staticTexts.matching(sheet).firstMatch.waitForExistence(timeout: 5))
+    }
+
+    @MainActor
     func testWritingAndDeletingANote() throws {
         let gameweek = try Fixtures.currentGameweek()
         app.buttons["Notes"].firstMatch.tap()
@@ -119,6 +137,32 @@ final class FPLUITests: XCTestCase {
         undo.tap()
         XCTAssertTrue(row.waitForExistence(timeout: 5))
         XCTAssertTrue(undo.waitForNonExistence(timeout: 5))
+    }
+
+    @MainActor
+    func testLinkingAPlayerWithAnAtMention() throws {
+        let gameweek = try Fixtures.currentGameweek()
+        let player = try Fixtures.topPlayer(in: "elements")
+        app.buttons["Notes"].firstMatch.tap()
+        let add = app.buttons["Add note to Gameweek \(gameweek)"]
+        XCTAssertTrue(add.waitForExistence(timeout: 10))
+        add.tap()
+
+        let editor = app.textViews["Note"]
+        XCTAssertTrue(editor.waitForExistence(timeout: 5))
+        editor.typeText("Bringing in @\(player.prefix(3))")
+        let suggestion = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Link \(player), ")).firstMatch
+        XCTAssertTrue(suggestion.waitForExistence(timeout: 10))
+        // Return picks the first suggestion.
+        editor.typeText("\n")
+
+        let chip = app.buttons["Unlink \(player)"]
+        XCTAssertTrue(chip.waitForExistence(timeout: 5))
+        XCTAssertEqual(editor.value as? String, "Bringing in @\(player) ")
+
+        editor.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 2))
+        XCTAssertTrue(chip.waitForNonExistence(timeout: 5))
+        XCTAssertEqual(editor.value as? String, "Bringing in ")
     }
 
     private var playerListRequests: Int {
@@ -172,9 +216,9 @@ private enum Fixtures {
         try XCTUnwrap((object("league")["standings"] as? [[String: Any]])?.first?["entry_name"] as? String)
     }
 
-    /// The first row of All players: most points, then by name, as the list sorts.
-    static func topPlayer() throws -> String {
-        let players = try array("elements-position")
+    /// The first row of All players, or with `elements` the first @ suggestion.
+    static func topPlayer(in file: String = "elements-position") throws -> String {
+        let players = try array(file)
             .filter { $0["can_select"] as? Bool != false && $0["removed"] as? Bool != true }
             .map { (name: $0["web_name"] as? String ?? "", points: $0["total_points"] as? Int ?? 0) }
         let top = players.min { ($1.points, $0.name) < ($0.points, $1.name) }
@@ -186,6 +230,29 @@ private enum Fixtures {
         let events = try array("events")
         let event = events.first { $0["is_current"] as? Bool == true } ?? events.first { $0["is_next"] as? Bool == true }
         return try XCTUnwrap(event?["id"] as? Int)
+    }
+
+    /// The Gameweek tab opens on the current gameweek, or the next once the served
+    /// matches (the same for every gameweek) are all over.
+    static func openingGameweek() throws -> Int {
+        let matches = try array("event-fixtures").filter { !($0["kickoff_time"] is NSNull) }
+        let allPlayed = !matches.isEmpty && matches.allSatisfy {
+            $0["finished_provisional"] as? Bool == true || $0["finished"] as? Bool == true
+        }
+        let next = try array("events").first { $0["is_next"] as? Bool == true }?["id"] as? Int
+        let current = try currentGameweek()
+        return allPlayed ? next ?? current : current
+    }
+
+    /// The start of a match row's label: "Arsenal v Chelsea" before kickoff, "Arsenal 2, Chelsea 1" after.
+    static func firstMatch() throws -> String {
+        let match = try XCTUnwrap(try array("event-fixtures").first { !($0["kickoff_time"] is NSNull) })
+        let teams = try array("teams")
+        func name(_ key: String) throws -> String {
+            try XCTUnwrap(teams.first { $0["id"] as? Int == match[key] as? Int }?["name"] as? String)
+        }
+        guard match["started"] as? Bool == true else { return "\(try name("team_h")) v \(try name("team_a"))" }
+        return "\(try name("team_h")) \(match["team_h_score"] as? Int ?? 0), \(try name("team_a")) \(match["team_a_score"] as? Int ?? 0)"
     }
 
     static func squad() throws -> Squad {

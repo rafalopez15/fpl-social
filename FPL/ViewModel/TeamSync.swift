@@ -33,7 +33,8 @@ final class TeamSync: ObservableObject {
     private let linked: LinkedTeamStore
     private let api: any TeamsAPI
     private let defaults: UserDefaults
-    private var isRefreshing = false
+    /// The refresh running now, which callers meanwhile wait for.
+    private var runningRefresh: Task<Void, Never>?
     private var refreshAgain = false
 
     /// This device's team, still to be added to the account as yours. Kept until
@@ -78,20 +79,30 @@ final class TeamSync: ObservableObject {
     }
 
     /// Loads the account's teams, and shows one of yours on Profile if the one
-    /// shown isn't yours any more (removed on another device).
+    /// shown isn't yours any more (removed on another device). Returns once a
+    /// refresh that started after the call has finished.
     func refresh() async {
         guard account.userID != nil else { return }
-        // One at a time; a refresh asked for meanwhile runs once more afterwards.
-        guard !isRefreshing else {
+        // One at a time: a call meanwhile makes the running one go round once more,
+        // and waits for it.
+        if let runningRefresh {
             refreshAgain = true
+            await runningRefresh.value
             return
         }
-        isRefreshing = true
-        defer { isRefreshing = false }
-        repeat {
-            refreshAgain = false
-            await refreshOnce()
-        } while refreshAgain && account.userID != nil
+        refreshAgain = false
+        let refresh = Task {
+            var again: Bool
+            repeat {
+                await refreshOnce()
+                again = refreshAgain
+                refreshAgain = false
+            } while again && account.userID != nil
+            // No await since the check above, so no caller can slip in between.
+            runningRefresh = nil
+        }
+        runningRefresh = refresh
+        await refresh.value
     }
 
     /// Links a team you confirmed. Signed in, it joins the account as yours

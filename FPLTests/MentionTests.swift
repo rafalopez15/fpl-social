@@ -1,0 +1,252 @@
+//
+//  MentionTests.swift
+//  FPLTests
+//
+
+import Foundation
+import SwiftUI
+import Testing
+@testable import FPL
+
+@MainActor
+struct MentionTests {
+    static func player(_ id: Int, _ webName: String, first: String = "", second: String = "",
+                       points: Int? = 10, canSelect: Bool = true) throws -> Element {
+        let points = points.map(String.init) ?? "null"
+        let json = """
+        {"id": \(id), "web_name": "\(webName)", "first_name": "\(first)", "second_name": "\(second)", "team": 1,
+         "element_type": 3, "now_cost": 50, "status": "a", "total_points": \(points), "can_select": \(canSelect)}
+        """
+        return try JSONDecoder.fplAPI.decode(Element.self, from: Data(json.utf8))
+    }
+
+    static func candidates() throws -> [PlayerSuggestions.Candidate] {
+        [try player(1, "Saka", first: "Bukayo", second: "Saka", points: 80),
+         try player(2, "Ødegaard", first: "Martin", second: "Ødegaard", points: 60),
+         try player(3, "Groß", first: "Pascal", second: "Groß", points: 70),
+         try player(4, "Sakamoto", points: 5),
+         try player(5, "Dewsbury-Hall", first: "Kiernan", second: "Dewsbury-Hall", points: 40),
+         try player(6, "Salah", first: "Mohamed", second: "Salah", points: 90)]
+            .map(PlayerSuggestions.Candidate.init)
+    }
+
+    /// `text` with "|" as the cursor.
+    static func query(_ text: String) -> Mention.Query? {
+        let cursor = text.firstIndex(of: "|")!
+        return Mention.query(in: text.replacingOccurrences(of: "|", with: ""), cursor: cursor)
+    }
+
+    // MARK: What's being typed
+
+    @Test func findsTheMentionBeforeTheCursor() {
+        #expect(Self.query("Moving @sak|")?.text == "sak")
+        #expect(Self.query("@|")?.text == "")
+        #expect(Self.query("@Gabriel M|")?.text == "Gabriel M")
+        #expect(Self.query("Line one\n@ode| and more")?.text == "ode")
+    }
+
+    @Test func ignoresAnythingThatIsntAMention() {
+        #expect(Self.query("No mention here|") == nil)
+        #expect(Self.query("mail me@example.com|") == nil)
+        #expect(Self.query("@saka\nnext line|") == nil)
+        #expect(Self.query("@saka is my captain this week, surely|") == nil)
+        #expect(Self.query("|@saka") == nil)
+    }
+
+    @Test func aFinishedMentionEndsTheSuggestions() throws {
+        let gabriel = NotePlayer(id: 7, webName: "Gabriel")
+        let text = "Bringing in @Gab"
+        let query = try #require(Mention.query(in: text, cursor: text.endIndex))
+        let (picked, cursor) = Mention.inserting("Gabriel", for: query, in: text)
+        #expect(Mention.query(in: picked, cursor: cursor, linked: [gabriel]) == nil)
+        #expect(Mention.query(in: "@Gabriel", cursor: "@Gabriel".endIndex, linked: [gabriel]) == nil)
+        // Typing on still looks for a longer name.
+        let more = "@Gabriel M"
+        #expect(Mention.query(in: more, cursor: more.endIndex, linked: [gabriel])?.text == "Gabriel M")
+    }
+
+    @Test func wordsAfterAMentionDontSayNoPlayersFound() throws {
+        let text = "Bringing in @Saka is"
+        let query = try #require(Mention.query(in: text, cursor: text.endIndex, linked: [Self.saka]))
+        #expect(!query.showsNoMatches)
+        #expect(Self.query("@sakx|")?.showsNoMatches == true)
+    }
+
+    @Test func keyboardPicksNeedALetter() {
+        #expect(Self.query("Moving @|")?.picksWithKeyboard == false)
+        #expect(Self.query("Moving @ |")?.picksWithKeyboard == false)
+        #expect(Self.query("Moving @s|")?.picksWithKeyboard == true)
+    }
+
+    @Test func announcesSuggestionsForVoiceOver() throws {
+        let saka = try Self.player(1, "Saka"), salah = try Self.player(6, "Salah")
+        #expect(NoteEditorView.announcement(for: [saka, salah], picksWithKeyboard: true)
+                == "2 players suggested. Return picks Saka.")
+        #expect(NoteEditorView.announcement(for: [saka], picksWithKeyboard: false) == "1 player suggested.")
+        #expect(NoteEditorView.announcement(for: [], picksWithKeyboard: true) == nil)
+    }
+
+    // MARK: Inserting
+
+    @Test func replacesWhatWasTypedWithTheName() throws {
+        let text = "Moving @sak"
+        let query = try #require(Mention.query(in: text, cursor: text.endIndex))
+        let (result, cursor) = Mention.inserting("Saka", for: query, in: text)
+        #expect(result == "Moving @Saka ")
+        #expect(cursor == result.endIndex)
+    }
+
+    @Test func keepsTheTextAfterTheCursorAndOneSpace() throws {
+        let text = "Moving @sa out"
+        let cursor = try #require(text.range(of: "@sa")?.upperBound)
+        let query = try #require(Mention.query(in: text, cursor: cursor))
+        let (result, newCursor) = Mention.inserting("Saka", for: query, in: text)
+        #expect(result == "Moving @Saka out")
+        #expect(result[newCursor...] == "out")
+    }
+
+    // MARK: Editing around mentions
+
+    static let saka = NotePlayer(id: 1, webName: "Saka")
+    static let isak = NotePlayer(id: 2, webName: "Isak")
+
+    @Test func backspacingIntoAMentionDeletesItWholeAndUnlinks() {
+        let edit = Mention.applying("Moving @Sak out", to: "Moving @Saka out", linked: [Self.saka, Self.isak])
+        #expect(edit.text == "Moving  out")
+        #expect(edit.cursor == 7)
+        #expect(edit.linked == [Self.isak])
+    }
+
+    @Test func deletingTheSpaceAfterAMentionKeepsIt() {
+        let edit = Mention.applying("Moving @Saka", to: "Moving @Saka ", linked: [Self.saka])
+        #expect(edit.text == "Moving @Saka")
+        #expect(edit.cursor == nil)
+        #expect(edit.linked == [Self.saka])
+    }
+
+    @Test func aSelectionAcrossAMentionDeletesItWhole() {
+        // "ing @Sa" selected and deleted.
+        let edit = Mention.applying("Movka out", to: "Moving @Saka out", linked: [Self.saka])
+        #expect(edit.text == "Mov out")
+        #expect(edit.linked.isEmpty)
+    }
+
+    @Test func aPlayerStaysLinkedWhileAnotherMentionOfHimIsLeft() {
+        let edit = Mention.applying("@Saka then ", to: "@Saka then @Saka", linked: [Self.saka])
+        #expect(edit.text == "@Saka then ")
+        #expect(edit.linked == [Self.saka])
+    }
+
+    @Test func playersLinkedWithoutAMentionStay() {
+        // Isak was linked from the stats popover, so never mentioned.
+        let edit = Mention.applying("Isa", to: "Isak", linked: [Self.isak])
+        #expect(edit.text == "Isa")
+        #expect(edit.linked == [Self.isak])
+    }
+
+    @Test func typingLeavesMentionsAlone() {
+        let edit = Mention.applying("Moving @Saka out now", to: "Moving @Saka out", linked: [Self.saka])
+        #expect(edit.text == "Moving @Saka out now")
+        #expect(edit.linked == [Self.saka])
+    }
+
+    @Test func spotsReturnTypedAfterAMention() throws {
+        let at = try #require(NoteEditorView.insertedNewline(from: "Moving @sak", to: "Moving @sak\n"))
+        #expect(Mention.query(in: "Moving @sak", cursor: at)?.text == "sak")
+        let middle = try #require(NoteEditorView.insertedNewline(from: "@sa out", to: "@sa\n out"))
+        #expect(Mention.query(in: "@sa out", cursor: middle)?.text == "sa")
+        #expect(NoteEditorView.insertedNewline(from: "Moving", to: "Movings") == nil)
+        #expect(NoteEditorView.insertedNewline(from: "Moving", to: "Moving\n\n") == nil)
+    }
+
+    // MARK: Suggestions
+
+    @Test func suggestsByAnyNameIgnoringCaseAndAccents() throws {
+        let all = try Self.candidates()
+        func ids(_ query: String) -> [Int] {
+            PlayerSuggestions.suggestions(for: query, in: all, squad: [], linked: []).map(\.id)
+        }
+        #expect(ids("sak") == [1, 4])
+        #expect(ids("bukayo") == [1])
+        #expect(ids("ode") == [2])
+        #expect(ids("gross") == [3])
+        #expect(ids("hall") == [5])
+        #expect(ids("dewsbury-h") == [5])
+        #expect(ids("akayo").isEmpty)
+    }
+
+    @Test func putsYourSquadFirstThenPoints() throws {
+        let all = try Self.candidates()
+        let shown = PlayerSuggestions.suggestions(for: "sa", in: all, squad: [4], linked: [])
+        #expect(shown.map(\.id) == [4, 6, 1])
+        // A bare @ shows five.
+        let top = PlayerSuggestions.suggestions(for: "", in: all, squad: [5], linked: [6])
+        #expect(top.map(\.id) == [5, 1, 3, 2, 4])
+    }
+
+    @Test func leavesOutPlayersWhoLeftTheLeague() async throws {
+        let model = PlayerSuggestions { [try Self.player(9, "Gone", canSelect: false), try Self.player(1, "Saka")] }
+        await model.loadIfNeeded()
+        #expect(model.candidates.map(\.element.id) == [1])
+    }
+
+    // MARK: Loading
+
+    @Test func usesProfilesPlayersWhenLoaded() async throws {
+        var loads = 0
+        let model = PlayerSuggestions { loads += 1; return [] }
+        await model.loadIfNeeded(known: [1: try Self.player(1, "Saka")])
+        #expect(loads == 0)
+        #expect(model.state == .loaded)
+        #expect(model.suggestions(for: "sa", squad: [], linked: []).map(\.id) == [1])
+    }
+
+    @Test func aFailureWaitsForRetry() async throws {
+        var fails = true
+        var loads = 0
+        let saka = try Self.player(1, "Saka")
+        let model = PlayerSuggestions {
+            loads += 1
+            if fails { throw URLError(.notConnectedToInternet) }
+            return [saka]
+        }
+        await model.loadIfNeeded()
+        #expect(model.state == .failed)
+        await model.loadIfNeeded()
+        #expect(loads == 1)
+        fails = false
+        await model.reload()
+        #expect(model.state == .loaded)
+    }
+
+    @Test func aCancelledLoadTriesAgainNextTime() async {
+        let model = PlayerSuggestions { throw CancellationError() }
+        await model.loadIfNeeded()
+        #expect(model.state == .idle)
+    }
+
+    // MARK: Highlighting
+
+    @Test func highlightsOnlyLinkedPlayersWholeNames() {
+        let linked = [NotePlayer(id: 1, webName: "Saka"), NotePlayer(id: 7, webName: "Gabriel M."),
+                      NotePlayer(id: 8, webName: "Gabriel")]
+        let text = "@Saka over @Salah, @Sakas no. @Gabriel M. and @Gabriel."
+        let found = Mention.ranges(in: text, linked: linked).map { String(text[$0]) }
+        #expect(found == ["@Saka", "@Gabriel M.", "@Gabriel"])
+    }
+
+    @Test func highlightingColorsTheMention() throws {
+        let attributed = Mention.highlighted("Captain @Saka", linked: [NotePlayer(id: 1, webName: "Saka")])
+        let run = try #require(attributed.runs.first { $0.foregroundColor != nil })
+        #expect(String(attributed[run.range].characters) == "@Saka")
+        #expect(run.inlinePresentationIntent == .stronglyEmphasized)
+        #expect(String(attributed.characters) == "Captain @Saka")
+    }
+
+    @Test func suggestionsReadNameTeamAndPosition() throws {
+        let saka = try Self.player(1, "Saka")
+        let arsenal = Team(id: 1, name: "Arsenal", shortName: "ARS")
+        #expect(NoteEditorView.description(of: saka, team: arsenal) == "Saka, Arsenal, Midfielder")
+        #expect(NoteEditorView.description(of: saka, team: nil) == "Saka, Midfielder")
+    }
+}

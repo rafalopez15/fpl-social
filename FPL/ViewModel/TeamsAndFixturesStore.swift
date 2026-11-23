@@ -16,6 +16,8 @@ final class TeamsAndFixturesStore: ObservableObject {
     @Published private(set) var teams: [Int: Team] = [:]
     /// Nil until loaded, or when there are no fixtures to show.
     @Published private(set) var schedule: FixtureSchedule?
+    /// True when the latest try to load the schedule failed, as opposed to having none.
+    @Published private(set) var scheduleFailed = false
 
     private let client: FPLAPIClient
     /// Gameweeks come from here rather than a request of this store's own.
@@ -50,7 +52,11 @@ final class TeamsAndFixturesStore: ObservableObject {
         // Not loadIfNeeded alone: between seasons there's no current gameweek, and that
         // would reload them on every call.
         if gameweeks.events.isEmpty { await gameweeks.loadIfNeeded() }
-        guard let fixtures = await fixtures, !gameweeks.events.isEmpty else { return }
+        guard let fixtures = await fixtures, !gameweeks.events.isEmpty else {
+            scheduleFailed = true
+            return
+        }
+        scheduleFailed = false
         schedule = FixtureSchedule(fixtures: fixtures, events: gameweeks.events)
     }
 
